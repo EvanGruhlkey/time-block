@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "test": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "volume:build": "tsx scripts/build-volume.ts"
   },
   "dependencies": {
     "three": "^0.180.0"
