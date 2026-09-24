@@ -89,6 +89,18 @@ describe('controls', () => {
 
     expect(handlers.dispatch).not.toHaveBeenCalled();
   });
+
+  it('turns a two-pointer pinch into zoom without dispatching a seek', () => {
+    const { controls, element, handlers } = setup();
+
+    element.dispatchEvent(pointerEvent('pointerdown', 1, 0, 0));
+    element.dispatchEvent(pointerEvent('pointerdown', 2, 100, 0));
+    element.dispatchEvent(pointerEvent('pointermove', 2, 120, 0));
+
+    expect(handlers.zoom).toHaveBeenCalledWith(-20);
+    expect(handlers.dispatch).not.toHaveBeenCalled();
+    controls.dispose();
+  });
 });
 
 describe('camera', () => {
@@ -123,3 +135,18 @@ describe('camera', () => {
     camera.dispose();
   });
 });
+
+function pointerEvent(
+  type: string,
+  pointerId: number,
+  clientX: number,
+  clientY: number,
+): Event {
+  const event = new Event(type, { bubbles: true });
+  Object.defineProperties(event, {
+    pointerId: { value: pointerId },
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+  });
+  return event;
+}
