@@ -6,6 +6,7 @@ import {
   GLSL3,
   LinearFilter,
   Mesh,
+  PlaneGeometry,
   RawShaderMaterial,
   RGBAFormat,
   Scene,
@@ -14,6 +15,8 @@ import {
   WebGLRenderer,
 } from 'three';
 import type { CameraController } from './camera';
+import sliceFragmentShader from './shaders/slice.frag?raw';
+import sliceVertexShader from './shaders/slice.vert?raw';
 import fragmentShader from './shaders/volume.frag?raw';
 import vertexShader from './shaders/volume.vert?raw';
 import type { AppState } from './state';
@@ -36,6 +39,9 @@ interface Resources {
   material: RawShaderMaterial;
   geometry: BoxGeometry;
   mesh: Mesh<BoxGeometry, RawShaderMaterial>;
+  sliceMaterial: RawShaderMaterial;
+  sliceGeometry: PlaneGeometry;
+  sliceMesh: Mesh<PlaneGeometry, RawShaderMaterial>;
 }
 
 export function createVolumeRenderer(
@@ -64,7 +70,7 @@ export function createVolumeRenderer(
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
   let resources = createResources(asset);
-  scene.add(resources.mesh);
+  scene.add(resources.mesh, resources.sliceMesh);
   let currentState: AppState | null = null;
   let running = false;
   let resumeAfterRestore = false;
@@ -76,8 +82,8 @@ export function createVolumeRenderer(
     if (!currentState || disposed) return;
     camera.update();
     const uniforms = resources.material.uniforms;
-    uniforms.uSlice!.value =
-      currentState.frame / Math.max(1, currentState.frameCount - 1);
+    const slice = currentState.frame / Math.max(1, currentState.frameCount - 1);
+    uniforms.uSlice!.value = slice;
     uniforms.uDensity!.value = currentState.density;
     uniforms.uSliceThickness!.value = currentState.sliceThickness;
     resources.mesh.scale.set(
@@ -85,6 +91,13 @@ export function createVolumeRenderer(
       1,
       currentState.timeDepth,
     );
+    resources.sliceMaterial.uniforms.uSlice!.value = slice;
+    resources.sliceMesh.scale.set(
+      asset.metadata.width / asset.metadata.height,
+      1,
+      1,
+    );
+    resources.sliceMesh.position.z = (slice - 0.5) * currentState.timeDepth;
     canvas.dataset.camera = camera.camera.position
       .toArray()
       .map((value) => value.toFixed(5))
@@ -119,10 +132,10 @@ export function createVolumeRenderer(
 
   const onContextRestored = (): void => {
     if (disposed) return;
-    scene.remove(resources.mesh);
+    scene.remove(resources.mesh, resources.sliceMesh);
     disposeResources(resources);
     resources = createResources(asset);
-    scene.add(resources.mesh);
+    scene.add(resources.mesh, resources.sliceMesh);
     restoreCount += 1;
     canvas.dataset.restores = String(restoreCount);
     canvas.dataset.renderer = 'ready';
@@ -163,7 +176,7 @@ export function createVolumeRenderer(
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      scene.remove(resources.mesh);
+      scene.remove(resources.mesh, resources.sliceMesh);
       disposeResources(resources);
       renderer.dispose();
       camera.dispose();
@@ -200,11 +213,38 @@ function createResources(asset: VolumeAsset): Resources {
   });
   const geometry = new BoxGeometry(1, 1, 1);
   const mesh = new Mesh(geometry, material);
-  return { texture, material, geometry, mesh };
+  mesh.renderOrder = 1;
+
+  const sliceMaterial = new RawShaderMaterial({
+    glslVersion: GLSL3,
+    vertexShader: sliceVertexShader,
+    fragmentShader: sliceFragmentShader,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    uniforms: {
+      uVolume: { value: texture },
+      uSlice: { value: 0.5 },
+    },
+  });
+  const sliceGeometry = new PlaneGeometry(1, 1);
+  const sliceMesh = new Mesh(sliceGeometry, sliceMaterial);
+  sliceMesh.renderOrder = 2;
+  return {
+    texture,
+    material,
+    geometry,
+    mesh,
+    sliceMaterial,
+    sliceGeometry,
+    sliceMesh,
+  };
 }
 
 function disposeResources(resources: Resources): void {
   resources.texture.dispose();
   resources.material.dispose();
   resources.geometry.dispose();
+  resources.sliceMaterial.dispose();
+  resources.sliceGeometry.dispose();
 }

@@ -25,6 +25,13 @@ test('slices, plays, hides, resets, and exposes labeled controls', async ({
   const panel = page.locator('.control-panel');
   const play = page.getByRole('button', { name: 'Play' });
   await expect(readout).toHaveText('FRAME 061 / 120 · 00:02.50');
+  expect(
+    await panel.evaluate((node) => Number(getComputedStyle(node).zIndex)),
+  ).toBeGreaterThan(
+    await page
+      .locator('canvas')
+      .evaluate((node) => Number(getComputedStyle(node).zIndex) || 0),
+  );
 
   await page.keyboard.press('ArrowLeft');
   await expect(readout).toHaveText('FRAME 060 / 120 · 00:02.46');

@@ -44,6 +44,7 @@ summary:focus-visible {
 
 .loading {
   position: fixed;
+  z-index: 2;
   inset: 50% auto auto 50%;
   margin: 0;
   color: #aaa49a;
@@ -62,6 +63,7 @@ summary:focus-visible {
 
 .control-panel {
   position: fixed;
+  z-index: 2;
   right: clamp(1rem, 3vw, 2.5rem);
   bottom: clamp(1rem, 3vw, 2.5rem);
   left: clamp(1rem, 3vw, 2.5rem);

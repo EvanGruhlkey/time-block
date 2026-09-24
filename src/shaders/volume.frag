@@ -24,13 +24,13 @@ vec2 intersectBox(vec3 origin, vec3 direction) {
 vec4 sampleVolume(vec3 p) {
   vec4 voxel = texture(uVolume, vec3(p.xy, p.z));
   float distanceToSlice = abs(p.z - uSlice);
-  float slice = 1.0 - smoothstep(
+  float sliceBand = 1.0 - smoothstep(
     uSliceThickness,
     uSliceThickness * 2.0,
     distanceToSlice
   );
-  voxel.rgb *= mix(0.32, 1.35, slice);
-  voxel.a *= uDensity * mix(0.22, 1.0, slice);
+  voxel.rgb *= mix(0.45, 0.75, sliceBand);
+  voxel.a *= uDensity * mix(0.16, 0.28, sliceBand);
   return voxel;
 }
 
@@ -51,7 +51,7 @@ void main() {
 
     vec3 samplePosition = vOrigin + rayDirection * distance;
     vec4 sampleColor = sampleVolume(clamp(samplePosition, 0.0, 1.0));
-    sampleColor.a = 1.0 - pow(1.0 - clamp(sampleColor.a, 0.0, 1.0), 1.0 / 18.0);
+    sampleColor.a = clamp(sampleColor.a * 0.05, 0.0, 1.0);
     accumulated.rgb += (1.0 - accumulated.a) * sampleColor.a * sampleColor.rgb;
     accumulated.a += (1.0 - accumulated.a) * sampleColor.a;
   }
