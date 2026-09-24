@@ -85,6 +85,10 @@ export function createVolumeRenderer(
       1,
       currentState.timeDepth,
     );
+    canvas.dataset.camera = camera.camera.position
+      .toArray()
+      .map((value) => value.toFixed(5))
+      .join(',');
     renderer.render(scene, camera.camera);
   };
 

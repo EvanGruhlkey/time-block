@@ -22,9 +22,8 @@ export function createControls(
 
   const abort = new view.AbortController();
   let wheelAccumulator = 0;
-  let activePointer: number | null = null;
-  let previousX = 0;
-  let previousY = 0;
+  const pointers = new Map<number, { x: number; y: number }>();
+  let previousPinchDistance: number | null = null;
 
   element.addEventListener(
     'wheel',
@@ -47,9 +46,8 @@ export function createControls(
   element.addEventListener(
     'pointerdown',
     (event) => {
-      activePointer = event.pointerId;
-      previousX = event.clientX;
-      previousY = event.clientY;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 2) previousPinchDistance = pinchDistance(pointers);
       element.setPointerCapture?.(event.pointerId);
     },
     { signal: abort.signal },
@@ -58,18 +56,28 @@ export function createControls(
   element.addEventListener(
     'pointermove',
     (event) => {
-      if (event.pointerId !== activePointer) return;
-      const dx = event.clientX - previousX;
-      const dy = event.clientY - previousY;
-      previousX = event.clientX;
-      previousY = event.clientY;
-      handlers.orbit(dx, dy);
+      const previous = pointers.get(event.pointerId);
+      if (!previous) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (pointers.size === 1) {
+        handlers.orbit(event.clientX - previous.x, event.clientY - previous.y);
+        return;
+      }
+
+      if (pointers.size === 2 && previousPinchDistance !== null) {
+        const distance = pinchDistance(pointers);
+        handlers.zoom(previousPinchDistance - distance);
+        previousPinchDistance = distance;
+      }
     },
     { signal: abort.signal },
   );
 
   const releasePointer = (event: PointerEvent): void => {
-    if (event.pointerId === activePointer) activePointer = null;
+    pointers.delete(event.pointerId);
+    previousPinchDistance =
+      pointers.size === 2 ? pinchDistance(pointers) : null;
   };
   element.addEventListener('pointerup', releasePointer, {
     signal: abort.signal,
@@ -93,6 +101,14 @@ export function createControls(
   );
 
   return { dispose: () => abort.abort() };
+}
+
+function pinchDistance(
+  pointers: Map<number, { x: number; y: number }>,
+): number {
+  const [first, second] = [...pointers.values()];
+  if (!first || !second) return 0;
+  return Math.hypot(second.x - first.x, second.y - first.y);
 }
 
 function commandForKey(key: string): Command | null {
