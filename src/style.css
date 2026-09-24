@@ -1,6 +1,6 @@
 :root {
   color: #f4f1ea;
-  background: #050505;
+  background: #0b0b0b;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
 }
@@ -19,7 +19,7 @@ body,
 }
 
 body {
-  background: radial-gradient(circle at 50% 42%, #151515 0%, #050505 55%);
+  background: radial-gradient(circle at 50% 42%, #1c1c1b 0%, #0b0b0b 62%);
 }
 
 button,

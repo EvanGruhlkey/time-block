@@ -3,8 +3,11 @@ import {
   BoxGeometry,
   ClampToEdgeWrapping,
   Data3DTexture,
+  EdgesGeometry,
   GLSL3,
   LinearFilter,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   PlaneGeometry,
   RawShaderMaterial,
@@ -42,6 +45,9 @@ interface Resources {
   sliceMaterial: RawShaderMaterial;
   sliceGeometry: PlaneGeometry;
   sliceMesh: Mesh<PlaneGeometry, RawShaderMaterial>;
+  boundsGeometry: EdgesGeometry;
+  boundsMaterial: LineBasicMaterial;
+  bounds: LineSegments<EdgesGeometry, LineBasicMaterial>;
 }
 
 export function createVolumeRenderer(
@@ -70,7 +76,7 @@ export function createVolumeRenderer(
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
   let resources = createResources(asset);
-  scene.add(resources.mesh, resources.sliceMesh);
+  scene.add(resources.mesh, resources.sliceMesh, resources.bounds);
   let currentState: AppState | null = null;
   let running = false;
   let resumeAfterRestore = false;
@@ -91,6 +97,7 @@ export function createVolumeRenderer(
       1,
       currentState.timeDepth,
     );
+    resources.bounds.scale.copy(resources.mesh.scale);
     resources.sliceMaterial.uniforms.uSlice!.value = slice;
     resources.sliceMesh.scale.set(
       asset.metadata.width / asset.metadata.height,
@@ -132,10 +139,10 @@ export function createVolumeRenderer(
 
   const onContextRestored = (): void => {
     if (disposed) return;
-    scene.remove(resources.mesh, resources.sliceMesh);
+    scene.remove(resources.mesh, resources.sliceMesh, resources.bounds);
     disposeResources(resources);
     resources = createResources(asset);
-    scene.add(resources.mesh, resources.sliceMesh);
+    scene.add(resources.mesh, resources.sliceMesh, resources.bounds);
     restoreCount += 1;
     canvas.dataset.restores = String(restoreCount);
     canvas.dataset.renderer = 'ready';
@@ -176,7 +183,7 @@ export function createVolumeRenderer(
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      scene.remove(resources.mesh, resources.sliceMesh);
+      scene.remove(resources.mesh, resources.sliceMesh, resources.bounds);
       disposeResources(resources);
       renderer.dispose();
       camera.dispose();
@@ -230,6 +237,16 @@ function createResources(asset: VolumeAsset): Resources {
   const sliceGeometry = new PlaneGeometry(1, 1);
   const sliceMesh = new Mesh(sliceGeometry, sliceMaterial);
   sliceMesh.renderOrder = 2;
+
+  const boundsGeometry = new EdgesGeometry(geometry);
+  const boundsMaterial = new LineBasicMaterial({
+    color: 0x77736b,
+    transparent: true,
+    opacity: 0.26,
+    depthTest: false,
+  });
+  const bounds = new LineSegments(boundsGeometry, boundsMaterial);
+  bounds.renderOrder = 3;
   return {
     texture,
     material,
@@ -238,6 +255,9 @@ function createResources(asset: VolumeAsset): Resources {
     sliceMaterial,
     sliceGeometry,
     sliceMesh,
+    boundsGeometry,
+    boundsMaterial,
+    bounds,
   };
 }
 
@@ -247,4 +267,6 @@ function disposeResources(resources: Resources): void {
   resources.geometry.dispose();
   resources.sliceMaterial.dispose();
   resources.sliceGeometry.dispose();
+  resources.boundsMaterial.dispose();
+  resources.boundsGeometry.dispose();
 }
