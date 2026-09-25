@@ -21,10 +21,9 @@ describe('timeline state', () => {
       frame: 60,
       frameCount: 120,
       playing: false,
-      uiVisible: true,
-      density: 0.72,
-      sliceThickness: 0.012,
-      timeDepth: 1,
+      density: 2,
+      sliceThickness: 0.08,
+      timeDepth: 2,
     });
   });
 
@@ -43,29 +42,16 @@ describe('timeline state', () => {
     expect(state.frame).toBe(60);
   });
 
-  it('toggles playback and interface visibility', () => {
+  it('toggles playback', () => {
     const state = createState(120, false);
 
     expect(update(state, { type: 'toggle-playback' }).playing).toBe(true);
-    expect(update(state, { type: 'toggle-ui' }).uiVisible).toBe(false);
-  });
-
-  it('clamps visual settings to their supported ranges', () => {
-    const state = createState(120, false);
-
-    expect(update(state, { type: 'set-density', value: 99 }).density).toBe(2);
-    expect(
-      update(state, { type: 'set-slice-thickness', value: 0 }).sliceThickness,
-    ).toBe(0.002);
-    expect(update(state, { type: 'set-time-depth', value: -1 }).timeDepth).toBe(
-      0.35,
-    );
   });
 
   it('resets all timeline and visual state', () => {
     const state = update(createState(120, false), {
-      type: 'set-density',
-      value: 1.5,
+      type: 'seek-to',
+      frame: 4,
     });
 
     expect(update(state, { type: 'reset' })).toEqual(createState(120, false));

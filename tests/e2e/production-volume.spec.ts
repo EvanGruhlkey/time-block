@@ -1,13 +1,22 @@
+import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import sharp from 'sharp';
 
-test('keeps the active dancer visibly separated from the time volume', async ({
+const sampleVideo = fileURLToPath(
+  new URL('../fixtures/sample.mp4', import.meta.url),
+);
+
+test('keeps the chosen frame visibly separated from the time volume', async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 640, height: 360 });
   await page.goto('/');
+  await page.locator('input[type="file"]').setInputFiles(sampleVideo);
   const canvas = page.locator('canvas');
-  await expect(canvas).toHaveAttribute('data-renderer', 'ready');
+  await expect(canvas).toHaveAttribute('data-renderer', 'ready', {
+    timeout: 60_000,
+  });
 
   const { data } = await sharp(await canvas.screenshot())
     .removeAlpha()

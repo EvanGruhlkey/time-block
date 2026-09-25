@@ -1,27 +1,26 @@
+import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import sharp from 'sharp';
-import { fixtureMetadata, fixtureVoxels } from '../fixtures/volume';
+
+const sampleVideo = fileURLToPath(
+  new URL('../fixtures/sample.mp4', import.meta.url),
+);
 
 test.beforeEach(async ({ page }) => {
-  await page.route('**/volume/metadata.json', async (route) => {
-    await route.fulfill({ json: fixtureMetadata });
-  });
-  await page.route('**/volume/dancer.rgba', async (route) => {
-    await route.fulfill({
-      body: Buffer.from(fixtureVoxels),
-      contentType: 'application/octet-stream',
-    });
-  });
-});
-
-test('keeps the page background visibly above black', async ({ page }) => {
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 640, height: 360 });
   await page.goto('/');
+  await page.locator('input[type="file"]').setInputFiles(sampleVideo);
   await expect(page.locator('canvas')).toHaveAttribute(
     'data-renderer',
     'ready',
+    {
+      timeout: 60_000,
+    },
   );
+});
 
+test('keeps the page background visibly above black', async ({ page }) => {
   const { data, info } = await sharp(await page.screenshot())
     .removeAlpha()
     .raw()
@@ -32,9 +31,7 @@ test('keeps the page background visibly above black', async ({ page }) => {
   expect(cornerLuminance).toBeLessThan(30);
 });
 
-test('draws a neutral outline around the time volume', async ({ page }) => {
-  await page.setViewportSize({ width: 640, height: 360 });
-  await page.goto('/');
+test('does not draw a border around the time volume', async ({ page }) => {
   const canvas = page.locator('canvas');
   await expect(canvas).toHaveAttribute('data-renderer', 'ready');
 
@@ -51,16 +48,13 @@ test('draws a neutral outline around the time volume', async ({ page }) => {
     if (red >= 35 && red <= 100 && spread <= 8) outlinePixels += 1;
   }
 
-  expect(outlinePixels).toBeGreaterThan(2_500);
+  expect(outlinePixels).toBeLessThan(350);
 });
 
 test('renders the volume and survives one context loss cycle', async ({
   page,
 }) => {
-  await page.goto('/');
   const canvas = page.locator('canvas');
-
-  await expect(canvas).toHaveAttribute('data-renderer', 'ready');
   expect(
     await canvas.evaluate((element) =>
       Boolean((element as HTMLCanvasElement).getContext('webgl2')),

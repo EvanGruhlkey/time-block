@@ -67,7 +67,6 @@ describe('controls', () => {
 
   it.each([
     [' ', { type: 'toggle-playback' }],
-    ['h', { type: 'toggle-ui' }],
     ['r', { type: 'reset' }],
   ])('maps %s to an application command', (key, command) => {
     const { controls, handlers } = setup();
@@ -77,6 +76,15 @@ describe('controls', () => {
 
     expect(handlers.dispatch).toHaveBeenCalledWith(command);
     expect(event.defaultPrevented).toBe(true);
+    controls.dispose();
+  });
+
+  it('ignores the former interface shortcut', () => {
+    const { controls, handlers } = setup();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }));
+
+    expect(handlers.dispatch).not.toHaveBeenCalled();
     controls.dispose();
   });
 
