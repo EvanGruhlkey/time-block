@@ -9,8 +9,8 @@ Choose a video and its first five seconds are processed entirely in your browser
 ## How it works
 
 1. **Choose.** A local video stays on the device; the app never uploads it to a server.
-2. **Sample.** The browser takes 120 chronological frames from up to the first five seconds and scales each one to 256×144.
-3. **Pack.** Each frame gets transparency from luminance and is packed into one GPU-ready RGBA volume.
+2. **Sample.** The browser takes 120 chronological frames from up to the first five seconds and fits the video's longest edge to 256 pixels without changing its shape.
+3. **Pack.** Each frame gets transparency from luminance and is packed into one GPU-ready RGBA volume. Bright, full-frame footage is rendered more lightly to keep the stacked frames legible.
 4. **Upload.** The browser loads that volume into a WebGL 3D texture.
 5. **Volume.** A GLSL ray marcher accumulates nearby frames into the dark, translucent body of the recording.
 6. **Slice.** A separate plane samples the selected frame at full clarity so the subject remains legible inside the history.
@@ -21,7 +21,7 @@ Choose a video and its first five seconds are processed entirely in your browser
 ```mermaid
 flowchart LR
   V["Local video file"] --> B["Native browser decoder + Canvas"]
-  B --> R["RGBA volume\n256 × 144 × 120"]
+  B --> R["Aspect-correct RGBA volume\nup to 256 × 256 × 120"]
   B --> M["In-memory metadata"]
   R --> T["WebGL 3D texture"]
   M --> T
