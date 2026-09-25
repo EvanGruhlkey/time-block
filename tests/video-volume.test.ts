@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { packVideoFrame, sampleVideoTimes } from '../src/video-volume';
+import {
+  fitVolumeDimensions,
+  packVideoFrame,
+  presentationForCoverage,
+  sampleVideoTimes,
+} from '../src/video-volume';
 
 describe('browser video sampling', () => {
   it('samples 120 frames from the first five seconds', () => {
@@ -33,5 +38,40 @@ describe('browser video sampling', () => {
     expect([...packVideoFrame(topRedBottomBlack, 1, 2)]).toEqual([
       0, 0, 0, 0, 255, 0, 0, 255,
     ]);
+  });
+
+  it('keeps portrait video portrait inside the volume', () => {
+    expect(fitVolumeDimensions(1080, 1920)).toEqual({
+      width: 144,
+      height: 256,
+    });
+  });
+
+  it('keeps landscape and square video proportions', () => {
+    expect(fitVolumeDimensions(1920, 1080)).toEqual({
+      width: 256,
+      height: 144,
+    });
+    expect(fitVolumeDimensions(1000, 1000)).toEqual({
+      width: 256,
+      height: 256,
+    });
+  });
+
+  it('rejects missing intrinsic video dimensions', () => {
+    expect(() => fitVolumeDimensions(0, 1080)).toThrow('dimensions');
+  });
+
+  it('reduces accumulated opacity for bright full-frame footage', () => {
+    expect(presentationForCoverage(0.95)).toEqual({
+      density: 0.55,
+      sliceThickness: 0.035,
+      timeDepth: 1,
+    });
+    expect(presentationForCoverage(0.15)).toEqual({
+      density: 1.55,
+      sliceThickness: 0.035,
+      timeDepth: 1,
+    });
   });
 });

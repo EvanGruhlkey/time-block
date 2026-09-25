@@ -12,6 +12,7 @@ export interface VolumeMetadata {
 export interface VolumeAsset {
   metadata: VolumeMetadata;
   voxels: Uint8Array;
+  presentation?: import('./state').VolumePresentation;
 }
 
 export class VolumeLoadError extends Error {

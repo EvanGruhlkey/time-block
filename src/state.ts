@@ -7,6 +7,18 @@ export interface AppState {
   timeDepth: number;
 }
 
+export interface VolumePresentation {
+  density: number;
+  sliceThickness: number;
+  timeDepth: number;
+}
+
+const DEFAULT_PRESENTATION: VolumePresentation = {
+  density: 0.9,
+  sliceThickness: 0.035,
+  timeDepth: 1,
+};
+
 export type Command =
   | { type: 'seek-by'; frames: number }
   | { type: 'seek-to'; frame: number }
@@ -19,6 +31,7 @@ const clamp = (value: number, min: number, max: number): number =>
 export function createState(
   frameCount: number,
   _reducedMotion: boolean,
+  presentation: VolumePresentation = DEFAULT_PRESENTATION,
 ): AppState {
   if (!Number.isInteger(frameCount) || frameCount <= 0) {
     throw new RangeError('frameCount must be a positive integer');
@@ -28,9 +41,7 @@ export function createState(
     frame: Math.floor(frameCount / 2),
     frameCount,
     playing: false,
-    density: 2,
-    sliceThickness: 0.08,
-    timeDepth: 2,
+    ...presentation,
   };
 }
 
@@ -49,6 +60,10 @@ export function update(state: AppState, command: Command): AppState {
     case 'toggle-playback':
       return { ...state, playing: !state.playing };
     case 'reset':
-      return createState(state.frameCount, false);
+      return {
+        ...state,
+        frame: Math.floor(state.frameCount / 2),
+        playing: false,
+      };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createState, update } from '../src/state';
+import { createState, update, type VolumePresentation } from '../src/state';
 
 describe('timeline state', () => {
   it('clamps repeated wheel movement to the available frames', () => {
@@ -21,10 +21,20 @@ describe('timeline state', () => {
       frame: 60,
       frameCount: 120,
       playing: false,
-      density: 2,
-      sliceThickness: 0.08,
-      timeDepth: 2,
+      density: 0.9,
+      sliceThickness: 0.035,
+      timeDepth: 1,
     });
+  });
+
+  it('uses presentation values measured from the selected video', () => {
+    const presentation: VolumePresentation = {
+      density: 0.55,
+      sliceThickness: 0.035,
+      timeDepth: 1,
+    };
+
+    expect(createState(120, false, presentation)).toMatchObject(presentation);
   });
 
   it('rejects a frame count that cannot describe a timeline', () => {

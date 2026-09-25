@@ -92,7 +92,11 @@ export function mountApp(root: HTMLElement): AppHandle {
       if (disposed || generation !== loadGeneration) return;
       renderer?.dispose();
       frameRate = asset.metadata.frameRate;
-      state = createState(asset.metadata.depth, reducedMotion);
+      state = createState(
+        asset.metadata.depth,
+        reducedMotion,
+        asset.presentation,
+      );
       renderer = createVolumeRenderer(canvas, asset, camera);
       canvas.hidden = false;
       renderer.resize();

@@ -1,7 +1,7 @@
 import type { VolumeAsset } from './volume';
+import type { VolumePresentation } from './state';
 
-const WIDTH = 256;
-const HEIGHT = 144;
+const MAX_EDGE = 256;
 const FRAME_COUNT = 120;
 const MAX_DURATION_SECONDS = 5;
 
@@ -9,6 +9,36 @@ export interface VideoSampling {
   durationSeconds: number;
   frameRate: number;
   times: number[];
+}
+
+export interface VolumeDimensions {
+  width: number;
+  height: number;
+}
+
+export function fitVolumeDimensions(
+  videoWidth: number,
+  videoHeight: number,
+): VolumeDimensions {
+  if (videoWidth <= 0 || videoHeight <= 0) {
+    throw new Error('The selected video does not have usable dimensions.');
+  }
+  const scale = MAX_EDGE / Math.max(videoWidth, videoHeight);
+  return {
+    width: Math.max(1, Math.round(videoWidth * scale)),
+    height: Math.max(1, Math.round(videoHeight * scale)),
+  };
+}
+
+export function presentationForCoverage(
+  opaqueCoverage: number,
+): VolumePresentation {
+  const density = Math.max(0.55, Math.min(1.55, 1.76 - opaqueCoverage * 1.4));
+  return {
+    density: Math.round(density * 100) / 100,
+    sliceThickness: 0.035,
+    timeDepth: 1,
+  };
 }
 
 export function sampleVideoTimes(duration: number): VideoSampling {
@@ -66,28 +96,34 @@ export async function buildVolumeFromVideo(
   try {
     await mediaEvent(video, 'loadedmetadata');
     const sampling = sampleVideoTimes(video.duration);
+    const { width, height } = fitVolumeDimensions(
+      video.videoWidth,
+      video.videoHeight,
+    );
     const canvas = document.createElement('canvas');
-    canvas.width = WIDTH;
-    canvas.height = HEIGHT;
+    canvas.width = width;
+    canvas.height = height;
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('Canvas video processing is unavailable.');
 
-    const voxels = new Uint8Array(WIDTH * HEIGHT * FRAME_COUNT * 4);
+    const voxels = new Uint8Array(width * height * FRAME_COUNT * 4);
+    let opaquePixels = 0;
     for (let index = 0; index < sampling.times.length; index += 1) {
       await seek(video, sampling.times[index]!);
-      drawContainedFrame(context, video);
-      const frame = context.getImageData(0, 0, WIDTH, HEIGHT);
-      voxels.set(
-        packVideoFrame(frame.data, WIDTH, HEIGHT),
-        index * WIDTH * HEIGHT * 4,
-      );
+      context.drawImage(video, 0, 0, width, height);
+      const frame = context.getImageData(0, 0, width, height);
+      const packed = packVideoFrame(frame.data, width, height);
+      for (let offset = 3; offset < packed.length; offset += 4) {
+        if (packed[offset]! >= 128) opaquePixels += 1;
+      }
+      voxels.set(packed, index * width * height * 4);
       onProgress((index + 1) / FRAME_COUNT);
     }
 
     return {
       metadata: {
-        width: WIDTH,
-        height: HEIGHT,
+        width,
+        height,
         depth: FRAME_COUNT,
         durationSeconds: sampling.durationSeconds,
         frameRate: sampling.frameRate,
@@ -96,30 +132,15 @@ export async function buildVolumeFromVideo(
         license: 'User-provided local file',
       },
       voxels,
+      presentation: presentationForCoverage(
+        opaquePixels / (width * height * FRAME_COUNT),
+      ),
     };
   } finally {
     video.removeAttribute('src');
     video.load();
     URL.revokeObjectURL(objectUrl);
   }
-}
-
-function drawContainedFrame(
-  context: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
-): void {
-  context.fillStyle = '#000';
-  context.fillRect(0, 0, WIDTH, HEIGHT);
-  const scale = Math.min(WIDTH / video.videoWidth, HEIGHT / video.videoHeight);
-  const width = video.videoWidth * scale;
-  const height = video.videoHeight * scale;
-  context.drawImage(
-    video,
-    (WIDTH - width) / 2,
-    (HEIGHT - height) / 2,
-    width,
-    height,
-  );
 }
 
 function mediaEvent(
