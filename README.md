@@ -1,27 +1,28 @@
 # Time Volume
 
-A dancer recorded as a block of time you can move through.
+A local video transformed into a block of time you can move through.
 
-Every video frame is stacked along the depth axis. Scroll or use the arrow keys to move the highlighted slice through the performance while the surrounding frames remain visible as a translucent volume.
+Choose a video and its first five seconds are processed entirely in your browser. Every sampled frame is stacked along the depth axis; scroll or use the arrow keys to move the highlighted slice through the recording while the surrounding frames remain visible as a translucent volume.
 
-![A dancer shown as a slice through a three-dimensional time volume](media/time-volume.jpg)
+![A video shown as a slice through a three-dimensional time volume](media/time-volume.jpg)
 
 ## How it works
 
-1. **Source.** A fixed five-second excerpt is sampled at 24 frames per second, giving the volume 120 chronological layers.
-2. **Pack.** The build script scales each frame to 256×144, derives transparency from luminance, flips its rows for WebGL coordinates, and writes one deterministic RGBA binary.
-3. **Upload.** The browser validates the metadata and byte count before loading the frames into a WebGL 3D texture.
-4. **Volume.** A GLSL ray marcher accumulates the nearby frames into the dark, translucent body of the performance.
-5. **Slice.** A separate plane samples the selected frame at full clarity so the dancer remains legible inside the history.
-6. **Explore.** The wheel and arrow keys move through time. Dragging orbits the camera, pinching zooms, and the shape controls change density, slice thickness, and time depth.
+1. **Choose.** A local video stays on the device; the app never uploads it to a server.
+2. **Sample.** The browser takes 120 chronological frames from up to the first five seconds and scales each one to 256×144.
+3. **Pack.** Each frame gets transparency from luminance and is packed into one GPU-ready RGBA volume.
+4. **Upload.** The browser loads that volume into a WebGL 3D texture.
+5. **Volume.** A GLSL ray marcher accumulates nearby frames into the dark, translucent body of the recording.
+6. **Slice.** A separate plane samples the selected frame at full clarity so the subject remains legible inside the history.
+7. **Explore.** The wheel and arrow keys move through time. Dragging orbits the camera and pinching zooms.
 
 ## System design
 
 ```mermaid
 flowchart LR
-  V["Licensed source video"] --> B["FFmpeg + Sharp volume builder"]
+  V["Local video file"] --> B["Native browser decoder + Canvas"]
   B --> R["RGBA volume\n256 × 144 × 120"]
-  B --> M["Validated metadata"]
+  B --> M["In-memory metadata"]
   R --> T["WebGL 3D texture"]
   M --> T
   T --> H["Ray-marched history"]
@@ -33,20 +34,18 @@ flowchart LR
   S --> C
 ```
 
-The source MP4 stays out of Git. The transformed volume is committed so the experience is fixed, reproducible, and does not depend on a remote video host at runtime.
+The selected file and transformed pixels remain in memory inside the browser. Nothing is sent to a backend or remote video host.
 
 ## Controls
 
-| Input                | Action                                     |
-| -------------------- | ------------------------------------------ |
-| Wheel or arrow keys  | Move through frames                        |
-| Space or play button | Play or pause                              |
-| Drag                 | Orbit the volume                           |
-| Pinch                | Zoom                                       |
-| Double-click         | Refocus the camera                         |
-| `H`                  | Hide or show the interface                 |
-| `R`                  | Reset the view                             |
-| Shape controls       | Adjust density, slice thickness, and depth |
+| Input               | Action              |
+| ------------------- | ------------------- |
+| Wheel or arrow keys | Move through frames |
+| Space               | Play or pause       |
+| Drag                | Orbit the volume    |
+| Pinch               | Zoom                |
+| Double-click        | Refocus the camera  |
+| `R`                 | Reset the view      |
 
 ## Run it
 
@@ -55,7 +54,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. The committed dancer volume is ready to use.
+Open the local URL printed by Vite and choose a video. Current desktop browsers work best with MP4 or WebM files they can decode natively.
 
 ```bash
 npm test -- --run
@@ -63,7 +62,7 @@ npm run test:e2e
 npm run build
 ```
 
-To rebuild the volume from a locally retained source file:
+The repository also retains the original reproducible dancer-volume pipeline:
 
 ```bash
 npm run volume:build -- --input assets/source/dancer.mp4 --start 00:00:04.000 --duration 5
@@ -71,15 +70,15 @@ npm run volume:build -- --input assets/source/dancer.mp4 --start 00:00:04.000 --
 
 ## Repository map
 
-| Path                      | What's in it                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------- |
-| `src/`                    | application state, controls, camera, UI, WebGL renderer, and shaders                  |
-| `scripts/build-volume.ts` | deterministic video-to-volume pipeline                                                |
-| `public/volume/`          | the production RGBA volume and its metadata                                           |
-| `assets/source/`          | source provenance and rebuild notes; the MP4 itself is ignored                        |
-| `tests/`                  | state, controls, asset validation, pipeline, rendering, and browser interaction tests |
-| `media/`                  | repository imagery                                                                    |
+| Path                      | What's in it                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `src/`                    | video processing, state, controls, camera, chooser, WebGL renderer, and shaders |
+| `scripts/build-volume.ts` | deterministic offline video-to-volume pipeline                                  |
+| `public/volume/`          | the original production RGBA volume and metadata                                |
+| `assets/source/`          | source provenance and rebuild notes; the MP4 itself is ignored                  |
+| `tests/`                  | sampling, state, controls, rendering, and browser interaction tests             |
+| `media/`                  | repository imagery                                                              |
 
 ## Credits
 
-The performance footage is [Dancing in the dark](https://mixkit.co/free-stock-video/dancing-in-the-dark-1026/) from Mixkit, used under the [Mixkit Stock Video Free License](https://mixkit.co/license/#videoFree). Rendering uses [Three.js](https://threejs.org/); video preparation uses [FFmpeg](https://ffmpeg.org/) and [Sharp](https://sharp.pixelplumbing.com/).
+The original example footage is [Dancing in the dark](https://mixkit.co/free-stock-video/dancing-in-the-dark-1026/) from Mixkit, used under the [Mixkit Stock Video Free License](https://mixkit.co/license/#videoFree). Rendering uses [Three.js](https://threejs.org/). The optional offline pipeline uses [FFmpeg](https://ffmpeg.org/) and [Sharp](https://sharp.pixelplumbing.com/).
