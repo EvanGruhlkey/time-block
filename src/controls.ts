@@ -121,8 +121,6 @@ function commandForKey(key: string): Command | null {
       return { type: 'seek-by', frames: 1 };
     case ' ':
       return { type: 'toggle-playback' };
-    case 'h':
-      return { type: 'toggle-ui' };
     case 'r':
       return { type: 'reset' };
     default:
