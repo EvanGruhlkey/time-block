@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   fitVolumeDimensions,
   packVideoFrame,
-  presentationForCoverage,
   sampleVideoTimes,
 } from '../src/video-volume';
 
@@ -30,13 +29,13 @@ describe('browser video sampling', () => {
     expect(() => sampleVideoTimes(Number.NaN)).toThrow('usable duration');
   });
 
-  it('packs canvas rows bottom-up and removes black pixels', () => {
+  it('packs canvas rows bottom-up without changing frame opacity', () => {
     const topRedBottomBlack = new Uint8ClampedArray([
       255, 0, 0, 255, 0, 0, 0, 255,
     ]);
 
     expect([...packVideoFrame(topRedBottomBlack, 1, 2)]).toEqual([
-      0, 0, 0, 0, 255, 0, 0, 255,
+      0, 0, 0, 255, 255, 0, 0, 255,
     ]);
   });
 
@@ -60,18 +59,5 @@ describe('browser video sampling', () => {
 
   it('rejects missing intrinsic video dimensions', () => {
     expect(() => fitVolumeDimensions(0, 1080)).toThrow('dimensions');
-  });
-
-  it('reduces accumulated opacity for bright full-frame footage', () => {
-    expect(presentationForCoverage(0.95)).toEqual({
-      density: 0.55,
-      sliceThickness: 0.035,
-      timeDepth: 1,
-    });
-    expect(presentationForCoverage(0.15)).toEqual({
-      density: 1.55,
-      sliceThickness: 0.035,
-      timeDepth: 1,
-    });
   });
 });

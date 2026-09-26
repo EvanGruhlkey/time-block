@@ -25,7 +25,7 @@ test('turns a chosen local video into a UI-free time volume', async ({
   await expect(page.locator('.control-panel')).toHaveCount(0);
 
   const before = await canvas.screenshot();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowLeft');
   await page.waitForTimeout(100);
   const after = await canvas.screenshot();
   expect(after.equals(before)).toBe(false);

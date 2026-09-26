@@ -2,20 +2,14 @@ export interface AppState {
   frame: number;
   frameCount: number;
   playing: boolean;
-  density: number;
-  sliceThickness: number;
   timeDepth: number;
 }
 
 export interface VolumePresentation {
-  density: number;
-  sliceThickness: number;
   timeDepth: number;
 }
 
 const DEFAULT_PRESENTATION: VolumePresentation = {
-  density: 0.9,
-  sliceThickness: 0.035,
   timeDepth: 1,
 };
 
@@ -38,7 +32,7 @@ export function createState(
   }
 
   return {
-    frame: Math.floor(frameCount / 2),
+    frame: frameCount - 1,
     frameCount,
     playing: false,
     ...presentation,
@@ -62,7 +56,7 @@ export function update(state: AppState, command: Command): AppState {
     case 'reset':
       return {
         ...state,
-        frame: Math.floor(state.frameCount / 2),
+        frame: state.frameCount - 1,
         playing: false,
       };
   }

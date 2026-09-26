@@ -1,5 +1,4 @@
 import type { VolumeAsset } from './volume';
-import type { VolumePresentation } from './state';
 
 const MAX_EDGE = 256;
 const FRAME_COUNT = 120;
@@ -30,17 +29,6 @@ export function fitVolumeDimensions(
   };
 }
 
-export function presentationForCoverage(
-  opaqueCoverage: number,
-): VolumePresentation {
-  const density = Math.max(0.55, Math.min(1.55, 1.76 - opaqueCoverage * 1.4));
-  return {
-    density: Math.round(density * 100) / 100,
-    sliceThickness: 0.035,
-    timeDepth: 1,
-  };
-}
-
 export function sampleVideoTimes(duration: number): VideoSampling {
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new Error('The selected video does not have a usable duration.');
@@ -67,15 +55,10 @@ export function packVideoFrame(
   for (let row = height - 1; row >= 0; row -= 1) {
     for (let column = 0; column < width; column += 1) {
       const index = (row * width + column) * 4;
-      const light = Math.max(
-        pixels[index]!,
-        pixels[index + 1]!,
-        pixels[index + 2]!,
-      );
       packed[offset] = pixels[index]!;
       packed[offset + 1] = pixels[index + 1]!;
       packed[offset + 2] = pixels[index + 2]!;
-      packed[offset + 3] = Math.round(smoothstep(8, 52, light) * 255);
+      packed[offset + 3] = pixels[index + 3]!;
       offset += 4;
     }
   }
@@ -107,15 +90,11 @@ export async function buildVolumeFromVideo(
     if (!context) throw new Error('Canvas video processing is unavailable.');
 
     const voxels = new Uint8Array(width * height * FRAME_COUNT * 4);
-    let opaquePixels = 0;
     for (let index = 0; index < sampling.times.length; index += 1) {
       await seek(video, sampling.times[index]!);
       context.drawImage(video, 0, 0, width, height);
       const frame = context.getImageData(0, 0, width, height);
       const packed = packVideoFrame(frame.data, width, height);
-      for (let offset = 3; offset < packed.length; offset += 4) {
-        if (packed[offset]! >= 128) opaquePixels += 1;
-      }
       voxels.set(packed, index * width * height * 4);
       onProgress((index + 1) / FRAME_COUNT);
     }
@@ -132,9 +111,7 @@ export async function buildVolumeFromVideo(
         license: 'User-provided local file',
       },
       voxels,
-      presentation: presentationForCoverage(
-        opaquePixels / (width * height * FRAME_COUNT),
-      ),
+      presentation: { timeDepth: 1 },
     };
   } finally {
     video.removeAttribute('src');
@@ -190,12 +167,4 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
     video.addEventListener('error', failed, { once: true });
     video.currentTime = time;
   });
-}
-
-function smoothstep(edge0: number, edge1: number, value: number): number {
-  const normalized = Math.min(
-    1,
-    Math.max(0, (value - edge0) / (edge1 - edge0)),
-  );
-  return normalized * normalized * (3 - 2 * normalized);
 }

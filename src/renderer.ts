@@ -1,12 +1,10 @@
 import {
-  BackSide,
   BoxGeometry,
   ClampToEdgeWrapping,
   Data3DTexture,
   GLSL3,
   LinearFilter,
   Mesh,
-  PlaneGeometry,
   RawShaderMaterial,
   RGBAFormat,
   Scene,
@@ -15,8 +13,6 @@ import {
   WebGLRenderer,
 } from 'three';
 import type { CameraController } from './camera';
-import sliceFragmentShader from './shaders/slice.frag?raw';
-import sliceVertexShader from './shaders/slice.vert?raw';
 import fragmentShader from './shaders/volume.frag?raw';
 import vertexShader from './shaders/volume.vert?raw';
 import type { AppState } from './state';
@@ -39,9 +35,27 @@ interface Resources {
   material: RawShaderMaterial;
   geometry: BoxGeometry;
   mesh: Mesh<BoxGeometry, RawShaderMaterial>;
-  sliceMaterial: RawShaderMaterial;
-  sliceGeometry: PlaneGeometry;
-  sliceMesh: Mesh<PlaneGeometry, RawShaderMaterial>;
+}
+
+export interface TimeBlockTransform {
+  sampleStart: number;
+  sampleDepth: number;
+  scaleDepth: number;
+  positionDepth: number;
+}
+
+export function timeBlockTransform(
+  frame: number,
+  frameCount: number,
+  timeDepth: number,
+): TimeBlockTransform {
+  const scaleDepth = timeDepth * ((frame + 1) / frameCount);
+  return {
+    sampleStart: 0.5 / frameCount,
+    sampleDepth: (frame + 0.5) / frameCount,
+    scaleDepth,
+    positionDepth: (scaleDepth - timeDepth) / 2,
+  };
 }
 
 export function createVolumeRenderer(
@@ -70,7 +84,7 @@ export function createVolumeRenderer(
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
   let resources = createResources(asset);
-  scene.add(resources.mesh, resources.sliceMesh);
+  scene.add(resources.mesh);
   let currentState: AppState | null = null;
   let running = false;
   let resumeAfterRestore = false;
@@ -82,22 +96,19 @@ export function createVolumeRenderer(
     if (!currentState || disposed) return;
     camera.update();
     const uniforms = resources.material.uniforms;
-    const slice = currentState.frame / Math.max(1, currentState.frameCount - 1);
-    uniforms.uSlice!.value = slice;
-    uniforms.uDensity!.value = currentState.density;
-    uniforms.uSliceThickness!.value = currentState.sliceThickness;
+    const block = timeBlockTransform(
+      currentState.frame,
+      currentState.frameCount,
+      currentState.timeDepth,
+    );
+    uniforms.uStartDepth!.value = block.sampleStart;
+    uniforms.uDepth!.value = block.sampleDepth;
     resources.mesh.scale.set(
       asset.metadata.width / asset.metadata.height,
       1,
-      currentState.timeDepth,
+      block.scaleDepth,
     );
-    resources.sliceMaterial.uniforms.uSlice!.value = slice;
-    resources.sliceMesh.scale.set(
-      asset.metadata.width / asset.metadata.height,
-      1,
-      1,
-    );
-    resources.sliceMesh.position.z = (slice - 0.5) * currentState.timeDepth;
+    resources.mesh.position.z = block.positionDepth;
     canvas.dataset.camera = camera.camera.position
       .toArray()
       .map((value) => value.toFixed(5))
@@ -132,10 +143,10 @@ export function createVolumeRenderer(
 
   const onContextRestored = (): void => {
     if (disposed) return;
-    scene.remove(resources.mesh, resources.sliceMesh);
+    scene.remove(resources.mesh);
     disposeResources(resources);
     resources = createResources(asset);
-    scene.add(resources.mesh, resources.sliceMesh);
+    scene.add(resources.mesh);
     restoreCount += 1;
     canvas.dataset.restores = String(restoreCount);
     canvas.dataset.renderer = 'ready';
@@ -176,7 +187,7 @@ export function createVolumeRenderer(
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      scene.remove(resources.mesh, resources.sliceMesh);
+      scene.remove(resources.mesh);
       disposeResources(resources);
       renderer.dispose();
       camera.dispose();
@@ -201,44 +212,20 @@ function createResources(asset: VolumeAsset): Resources {
     glslVersion: GLSL3,
     vertexShader,
     fragmentShader,
-    side: BackSide,
-    transparent: true,
-    depthWrite: false,
     uniforms: {
       uVolume: { value: texture },
-      uSlice: { value: 0.5 },
-      uDensity: { value: 0.72 },
-      uSliceThickness: { value: 0.012 },
+      uStartDepth: { value: 0 },
+      uDepth: { value: 0.5 },
     },
   });
   const geometry = new BoxGeometry(1, 1, 1);
   const mesh = new Mesh(geometry, material);
-  mesh.renderOrder = 1;
-
-  const sliceMaterial = new RawShaderMaterial({
-    glslVersion: GLSL3,
-    vertexShader: sliceVertexShader,
-    fragmentShader: sliceFragmentShader,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    uniforms: {
-      uVolume: { value: texture },
-      uSlice: { value: 0.5 },
-    },
-  });
-  const sliceGeometry = new PlaneGeometry(1, 1);
-  const sliceMesh = new Mesh(sliceGeometry, sliceMaterial);
-  sliceMesh.renderOrder = 2;
 
   return {
     texture,
     material,
     geometry,
     mesh,
-    sliceMaterial,
-    sliceGeometry,
-    sliceMesh,
   };
 }
 
@@ -246,6 +233,4 @@ function disposeResources(resources: Resources): void {
   resources.texture.dispose();
   resources.material.dispose();
   resources.geometry.dispose();
-  resources.sliceMaterial.dispose();
-  resources.sliceGeometry.dispose();
 }
