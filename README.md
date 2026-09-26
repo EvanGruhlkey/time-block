@@ -2,7 +2,7 @@
 
 A local video transformed into a block of time you can move through.
 
-Choose a video and its first five seconds are processed entirely in your browser. Every sampled frame is stacked along the depth axis; scroll or use the arrow keys to move the highlighted slice through the recording while the surrounding frames remain visible as a translucent volume.
+Choose a video and its first five seconds are processed entirely in your browser. Every sampled frame is stacked along the depth axis; scroll or use the arrow keys to slice through the recording while its history remains visible as a solid space-time block.
 
 ![A video shown as a slice through a three-dimensional time volume](media/time-volume.jpg)
 
@@ -10,10 +10,10 @@ Choose a video and its first five seconds are processed entirely in your browser
 
 1. **Choose.** A local video stays on the device; the app never uploads it to a server.
 2. **Sample.** The browser takes 120 chronological frames from up to the first five seconds and fits the video's longest edge to 256 pixels without changing its shape.
-3. **Pack.** Each frame gets transparency from luminance and is packed into one GPU-ready RGBA volume. Bright, full-frame footage is rendered more lightly to keep the stacked frames legible.
+3. **Pack.** The frames are packed in chronological order into one GPU-ready RGBA volume.
 4. **Upload.** The browser loads that volume into a WebGL 3D texture.
-5. **Volume.** A GLSL ray marcher accumulates nearby frames into the dark, translucent body of the recording.
-6. **Slice.** A separate plane samples the selected frame at full clarity so the subject remains legible inside the history.
+5. **Volume.** The front face shows the selected video frame while the top and sides expose exact spatial rows and columns evolving through time.
+6. **Slice.** Moving through the recording changes the block's physical depth, revealing or removing its temporal history.
 7. **Explore.** The wheel and arrow keys move through time. Dragging orbits the camera and pinching zooms.
 
 ## System design
@@ -25,8 +25,8 @@ flowchart LR
   B --> M["In-memory metadata"]
   R --> T["WebGL 3D texture"]
   M --> T
-  T --> H["Ray-marched history"]
-  T --> S["Active frame slice"]
+  T --> H["Space-time block surfaces"]
+  T --> S["Selected front frame"]
   I["Wheel, keys, drag, pinch"] --> A["Application state"]
   A --> H
   A --> S
