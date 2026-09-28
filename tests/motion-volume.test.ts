@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMotionVolume,
   estimateTranslation,
+  isolatePrimaryMotion,
+  isolateMotion,
   stabilizeFrames,
   translateFrame,
 } from '../src/motion-volume';
@@ -98,5 +100,40 @@ describe('motion volume preprocessing', () => {
     expect(alpha).toEqual([
       0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 255,
     ]);
+  });
+
+  it('returns transparent frames for a stable background', () => {
+    const frames = [
+      frame(3, 1, [[0, 0]]),
+      frame(3, 1, [[1, 0]]),
+      frame(3, 1, [[2, 0]]),
+    ];
+
+    const isolated = isolateMotion(frames, 3, 1);
+
+    expect(
+      isolated.map((pixels) => [pixels[3], pixels[7], pixels[11]]),
+    ).toEqual([
+      [255, 0, 0],
+      [0, 255, 0],
+      [0, 0, 255],
+    ]);
+  });
+
+  it('keeps the main moving subject and removes distant motion noise', () => {
+    const pixels = frame(7, 3, []);
+    pixels.fill(0);
+    const alpha: Array<[number, number]> = [
+      [1, 1],
+      [2, 1],
+      [2, 2],
+      [6, 0],
+    ];
+    for (const [x, y] of alpha) pixels[(y * 7 + x) * 4 + 3] = 220;
+
+    const isolated = isolatePrimaryMotion([pixels], 7, 3, 1)[0]!;
+
+    expect(isolated[(1 * 7 + 1) * 4 + 3]).toBe(220);
+    expect(isolated[(0 * 7 + 6) * 4 + 3]).toBe(0);
   });
 });

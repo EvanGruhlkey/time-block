@@ -118,32 +118,103 @@ export function buildMotionVolume(
 ): Uint8Array {
   const stabilized = stabilizeFrames(frames, width, height, maxShift);
   if (stabilized.length === 0) return new Uint8Array();
-  const background = medianBackground(stabilized, width, height);
+  const isolated = isolateMotion(stabilized, width, height);
   const volume = new Uint8Array(width * height * frames.length * 4);
   let target = 0;
 
-  for (const pixels of stabilized) {
+  for (const pixels of isolated) {
     for (let y = height - 1; y >= 0; y -= 1) {
       for (let x = 0; x < width; x += 1) {
         const source = (y * width + x) * 4;
-        if (pixels[source + 3] === 0) {
-          target += 4;
-          continue;
-        }
-        const difference = Math.max(
-          Math.abs(pixels[source]! - background[source]!),
-          Math.abs(pixels[source + 1]! - background[source + 1]!),
-          Math.abs(pixels[source + 2]! - background[source + 2]!),
-        );
-        volume[target] = pixels[source]!;
-        volume[target + 1] = pixels[source + 1]!;
-        volume[target + 2] = pixels[source + 2]!;
-        volume[target + 3] = Math.round(smoothstep(40, 100, difference) * 255);
+        volume.set(pixels.subarray(source, source + 4), target);
         target += 4;
       }
     }
   }
   return volume;
+}
+
+export function isolateMotion(
+  frames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+): Uint8ClampedArray[] {
+  if (frames.length === 0) return [];
+  const background = medianBackground(frames, width, height);
+  return frames.map((pixels) => {
+    const isolated = pixels.slice();
+    for (let source = 0; source < pixels.length; source += 4) {
+      if (pixels[source + 3] === 0) continue;
+      const difference = Math.max(
+        Math.abs(pixels[source]! - background[source]!),
+        Math.abs(pixels[source + 1]! - background[source + 1]!),
+        Math.abs(pixels[source + 2]! - background[source + 2]!),
+      );
+      isolated[source + 3] = Math.round(smoothstep(40, 100, difference) * 255);
+    }
+    return isolated;
+  });
+}
+
+export function isolatePrimaryMotion(
+  frames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+  radius = 2,
+): Uint8ClampedArray[] {
+  return frames.map((pixels) => {
+    const active = new Uint8Array(width * height);
+    for (let index = 0; index < active.length; index += 1) {
+      if (pixels[index * 4 + 3]! < 40) continue;
+      const centerX = index % width;
+      const centerY = Math.floor(index / width);
+      for (
+        let y = Math.max(0, centerY - radius);
+        y <= Math.min(height - 1, centerY + radius);
+        y += 1
+      ) {
+        for (
+          let x = Math.max(0, centerX - radius);
+          x <= Math.min(width - 1, centerX + radius);
+          x += 1
+        ) {
+          active[y * width + x] = 1;
+        }
+      }
+    }
+
+    const visited = new Uint8Array(active.length);
+    let primary: number[] = [];
+    for (let start = 0; start < active.length; start += 1) {
+      if (!active[start] || visited[start]) continue;
+      const component: number[] = [];
+      const queue = [start];
+      visited[start] = 1;
+      for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const index = queue[cursor]!;
+        component.push(index);
+        const x = index % width;
+        const neighbors = [index - width, index + width];
+        if (x > 0) neighbors.push(index - 1);
+        if (x < width - 1) neighbors.push(index + 1);
+        for (const neighbor of neighbors) {
+          if (neighbor < 0 || neighbor >= active.length) continue;
+          if (!active[neighbor] || visited[neighbor]) continue;
+          visited[neighbor] = 1;
+          queue.push(neighbor);
+        }
+      }
+      if (component.length > primary.length) primary = component;
+    }
+
+    const keep = new Uint8Array(active.length);
+    for (const index of primary) keep[index] = 1;
+    const output = pixels.slice();
+    for (let index = 0; index < keep.length; index += 1) {
+      if (!keep[index]) output[index * 4 + 3] = 0;
+    }
+    return output;
+  });
 }
 
 function placeInPanorama(
