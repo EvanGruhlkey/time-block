@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applySubjectMask,
+  fadeTemporalEdges,
   filterSubjectContrast,
   maskSubjectFrames,
   mergeNearbyMotion,
@@ -19,12 +20,23 @@ describe('subject masks', () => {
   });
 
   it('resamples a selected shot to the requested temporal depth', () => {
-    const frames = [0, 1, 2].map(
+    const frames = [0, 100, 200].map(
       (value) => new Uint8ClampedArray([value, 0, 0, 255]),
     );
 
     expect(resampleFrames(frames, 5).map((frame) => frame[0])).toEqual([
-      0, 1, 1, 2, 2,
+      0, 50, 100, 150, 200,
+    ]);
+  });
+
+  it('fades the first and last temporal slices to transparent', () => {
+    const frames = Array.from(
+      { length: 5 },
+      () => new Uint8ClampedArray([20, 30, 40, 255]),
+    );
+
+    expect(fadeTemporalEdges(frames, 2).map((frame) => frame[3])).toEqual([
+      0, 128, 255, 128, 0,
     ]);
   });
 

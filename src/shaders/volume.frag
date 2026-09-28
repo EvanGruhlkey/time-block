@@ -2,6 +2,7 @@ precision highp float;
 precision highp sampler3D;
 
 uniform sampler3D uVolume;
+uniform sampler3D uFrames;
 uniform float uStartDepth;
 uniform float uDepth;
 uniform float uFrameCount;
@@ -40,12 +41,34 @@ void main() {
     vec3 position = vOrigin + rayDirection * distance;
     float time = mix(uStartDepth, uDepth, position.z);
     vec4 sampleColor = texture(uVolume, vec3(position.xy, time));
+    sampleColor.a = smoothstep(0.18, 0.70, sampleColor.a);
     sampleColor.a = 1.0 - pow(1.0 - sampleColor.a, opacityScale);
     accumulated.rgb +=
       (1.0 - accumulated.a) * sampleColor.a * sampleColor.rgb;
     accumulated.a += (1.0 - accumulated.a) * sampleColor.a;
   }
 
-  if (accumulated.a < 0.01) discard;
-  outColor = vec4(accumulated.rgb / accumulated.a, accumulated.a);
+  vec4 frameColor = vec4(0.0);
+  if (abs(rayDirection.z) > 0.0001) {
+    float frameDistance = (1.0 - vOrigin.z) / rayDirection.z;
+    vec3 framePosition = vOrigin + rayDirection * frameDistance;
+    if (
+      frameDistance >= nearDistance - 0.001 &&
+      frameDistance <= farDistance + 0.001 &&
+      all(greaterThanEqual(framePosition.xy, vec2(0.0))) &&
+      all(lessThanEqual(framePosition.xy, vec2(1.0)))
+    ) {
+      frameColor = texture(uFrames, vec3(framePosition.xy, uDepth));
+      frameColor.a *= 1.0 - smoothstep(0.05, 0.25, uDepth);
+    }
+  }
+
+  float finalAlpha = frameColor.a + (1.0 - frameColor.a) * accumulated.a;
+  if (finalAlpha < 0.01) discard;
+  vec3 trailColor =
+    accumulated.a > 0.0 ? accumulated.rgb / accumulated.a : vec3(0.0);
+  vec3 finalColor =
+    frameColor.rgb * frameColor.a +
+    trailColor * accumulated.a * (1.0 - frameColor.a);
+  outColor = vec4(finalColor / finalAlpha, finalAlpha);
 }

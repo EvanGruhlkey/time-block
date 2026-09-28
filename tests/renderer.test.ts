@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { timeBlockTransform } from '../src/renderer';
+import fragmentShader from '../src/shaders/volume.frag?raw';
 
 describe('space-time block geometry', () => {
   it('shows one frame of depth at the start of the timeline', () => {
@@ -18,5 +19,18 @@ describe('space-time block geometry', () => {
       scaleDepth: 1,
       positionDepth: 0,
     });
+  });
+
+  it('rejects weak mask opacity before it accumulates through depth', () => {
+    expect(fragmentShader).toContain(
+      'sampleColor.a = smoothstep(0.18, 0.70, sampleColor.a);',
+    );
+  });
+
+  it('renders the current complete video frame in front of its trail', () => {
+    expect(fragmentShader).toContain('uniform sampler3D uFrames;');
+    expect(fragmentShader).toContain(
+      'texture(uFrames, vec3(framePosition.xy, uDepth))',
+    );
   });
 });

@@ -19,8 +19,36 @@ export function resampleFrames(
   if (frames.length === 0 || count <= 0) return [];
   if (count === 1) return [frames[0]!.slice()];
   return Array.from({ length: count }, (_, index) => {
-    const source = Math.round((index * (frames.length - 1)) / (count - 1));
-    return frames[source]!.slice();
+    const position = (index * (frames.length - 1)) / (count - 1);
+    const before = Math.floor(position);
+    const after = Math.min(frames.length - 1, before + 1);
+    const blend = position - before;
+    const output = new Uint8ClampedArray(frames[before]!.length);
+    for (let offset = 0; offset < output.length; offset += 1) {
+      output[offset] =
+        frames[before]![offset]! * (1 - blend) +
+        frames[after]![offset]! * blend;
+    }
+    return output;
+  });
+}
+
+export function fadeTemporalEdges(
+  frames: Uint8ClampedArray[],
+  edgeFrames: number,
+): Uint8ClampedArray[] {
+  if (edgeFrames <= 0) return frames.map((frame) => frame.slice());
+  return frames.map((frame, index) => {
+    const output = frame.slice();
+    const fade = Math.min(
+      1,
+      index / edgeFrames,
+      (frames.length - 1 - index) / edgeFrames,
+    );
+    for (let offset = 3; offset < output.length; offset += 4) {
+      output[offset] = output[offset]! * fade;
+    }
+    return output;
   });
 }
 

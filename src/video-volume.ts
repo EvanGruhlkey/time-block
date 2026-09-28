@@ -1,19 +1,12 @@
 import type { VolumeAsset } from './volume';
-import { isolateMotion, isolatePrimaryMotion } from './motion-volume';
-import { createModelSubjectRemover } from './background-remover';
+import { isolateMotion, stabilizeFrames } from './motion-volume';
 import { selectActionShot, type ShotRange } from './shot-detection';
-import {
-  filterSubjectContrast,
-  maskSubjectFrames,
-  resampleFrames,
-  type SubjectRemover,
-} from './subject-mask';
+import { fadeTemporalEdges, resampleFrames } from './subject-mask';
 
 const MAX_EDGE = 256;
 const FRAME_COUNT = 120;
 const SOURCE_FRAME_COUNT = 36;
 const MAX_DURATION_SECONDS = 5;
-const MASK_FRAMES = 24;
 
 export interface VideoSampling {
   durationSeconds: number;
@@ -29,6 +22,7 @@ export interface VolumeDimensions {
 export interface PreparedSubjectVolume {
   shot: ShotRange;
   voxels: Uint8Array;
+  frames: Uint8Array;
 }
 
 export function fitVolumeDimensions(
@@ -89,7 +83,6 @@ export async function prepareSubjectVolume(
   width: number,
   height: number,
   depth: number,
-  removeBackground: SubjectRemover = createModelSubjectRemover(),
   onProgress: (progress: number) => void = () => undefined,
 ): Promise<PreparedSubjectVolume> {
   const detected = selectActionShot(frames, width, height);
@@ -102,39 +95,28 @@ export async function prepareSubjectVolume(
     end: detected.end - trim,
   };
   const selected = frames.slice(shot.start, shot.end);
-  const inferenceFrames = resampleFrames(
+  const stabilized = stabilizeFrames(
     selected,
-    Math.min(MASK_FRAMES, selected.length),
-  );
-  const masked = await maskSubjectFrames(
-    inferenceFrames,
     width,
     height,
-    removeBackground,
-    onProgress,
+    Math.round(Math.min(width, height) * 0.05),
   );
-  let subjects = isolatePrimaryMotion(
-    filterSubjectContrast(masked, 90),
-    width,
-    height,
-    0,
+  const sampledMotion = fadeTemporalEdges(
+    resampleFrames(isolateMotion(stabilized, width, height), depth),
+    Math.max(1, Math.round(depth * 0.08)),
   );
-  const visiblePixels = subjects.reduce(
-    (total, frame) =>
-      total +
-      Array.from(frame).filter((value, index) => index % 4 === 3 && value > 32)
-        .length,
-    0,
-  );
-  if (visiblePixels < width * height * subjects.length * 0.01) {
-    subjects = isolateMotion(inferenceFrames, width, height);
-  }
-  const sampled = resampleFrames(subjects, depth);
+  const sampledFrames = resampleFrames(stabilized, depth);
   const voxels = new Uint8Array(width * height * depth * 4);
-  sampled.forEach((pixels, index) => {
+  const fullFrames = new Uint8Array(voxels.length);
+  sampledMotion.forEach((pixels, index) => {
     voxels.set(packVideoFrame(pixels, width, height), index * pixels.length);
+    fullFrames.set(
+      packVideoFrame(sampledFrames[index]!, width, height),
+      index * pixels.length,
+    );
   });
-  return { shot, voxels };
+  onProgress(1);
+  return { shot, voxels, frames: fullFrames };
 }
 
 export async function buildVolumeFromVideo(
@@ -174,7 +156,6 @@ export async function buildVolumeFromVideo(
       width,
       height,
       FRAME_COUNT,
-      createModelSubjectRemover(),
       (progress) => onProgress(0.35 + progress * 0.65),
     );
     const shotFrameCount = prepared.shot.end - prepared.shot.start;
@@ -193,6 +174,7 @@ export async function buildVolumeFromVideo(
         license: 'User-provided local file',
       },
       voxels: prepared.voxels,
+      frames: prepared.frames,
       presentation: { timeDepth: 1 },
     };
   } finally {
