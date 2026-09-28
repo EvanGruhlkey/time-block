@@ -1,9 +1,19 @@
 import type { VolumeAsset } from './volume';
-import { buildMotionVolume } from './motion-volume';
+import { isolateMotion, isolatePrimaryMotion } from './motion-volume';
+import { createModelSubjectRemover } from './background-remover';
+import { selectActionShot, type ShotRange } from './shot-detection';
+import {
+  filterSubjectContrast,
+  maskSubjectFrames,
+  resampleFrames,
+  type SubjectRemover,
+} from './subject-mask';
 
 const MAX_EDGE = 256;
 const FRAME_COUNT = 120;
+const SOURCE_FRAME_COUNT = 36;
 const MAX_DURATION_SECONDS = 5;
+const MASK_FRAMES = 24;
 
 export interface VideoSampling {
   durationSeconds: number;
@@ -14,6 +24,11 @@ export interface VideoSampling {
 export interface VolumeDimensions {
   width: number;
   height: number;
+}
+
+export interface PreparedSubjectVolume {
+  shot: ShotRange;
+  voxels: Uint8Array;
 }
 
 export function fitVolumeDimensions(
@@ -35,11 +50,14 @@ export function sampleVideoTimes(duration: number): VideoSampling {
     throw new Error('The selected video does not have a usable duration.');
   }
   const durationSeconds = Math.min(duration, MAX_DURATION_SECONDS);
-  const frameRate = FRAME_COUNT / durationSeconds;
+  const frameRate = SOURCE_FRAME_COUNT / durationSeconds;
   return {
     durationSeconds,
     frameRate,
-    times: Array.from({ length: FRAME_COUNT }, (_, index) => index / frameRate),
+    times: Array.from(
+      { length: SOURCE_FRAME_COUNT },
+      (_, index) => index / frameRate,
+    ),
   };
 }
 
@@ -64,6 +82,59 @@ export function packVideoFrame(
     }
   }
   return packed;
+}
+
+export async function prepareSubjectVolume(
+  frames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+  depth: number,
+  removeBackground: SubjectRemover = createModelSubjectRemover(),
+  onProgress: (progress: number) => void = () => undefined,
+): Promise<PreparedSubjectVolume> {
+  const detected = selectActionShot(frames, width, height);
+  const trim =
+    detected.end - detected.start >= 8
+      ? Math.round((detected.end - detected.start) * 0.2)
+      : 0;
+  const shot = {
+    start: detected.start + trim,
+    end: detected.end - trim,
+  };
+  const selected = frames.slice(shot.start, shot.end);
+  const inferenceFrames = resampleFrames(
+    selected,
+    Math.min(MASK_FRAMES, selected.length),
+  );
+  const masked = await maskSubjectFrames(
+    inferenceFrames,
+    width,
+    height,
+    removeBackground,
+    onProgress,
+  );
+  let subjects = isolatePrimaryMotion(
+    filterSubjectContrast(masked, 90),
+    width,
+    height,
+    0,
+  );
+  const visiblePixels = subjects.reduce(
+    (total, frame) =>
+      total +
+      Array.from(frame).filter((value, index) => index % 4 === 3 && value > 32)
+        .length,
+    0,
+  );
+  if (visiblePixels < width * height * subjects.length * 0.01) {
+    subjects = isolateMotion(inferenceFrames, width, height);
+  }
+  const sampled = resampleFrames(subjects, depth);
+  const voxels = new Uint8Array(width * height * depth * 4);
+  sampled.forEach((pixels, index) => {
+    voxels.set(packVideoFrame(pixels, width, height), index * pixels.length);
+  });
+  return { shot, voxels };
 }
 
 export async function buildVolumeFromVideo(
@@ -96,10 +167,18 @@ export async function buildVolumeFromVideo(
       context.drawImage(video, 0, 0, width, height);
       const frame = context.getImageData(0, 0, width, height);
       frames.push(frame.data);
-      onProgress(((index + 1) / FRAME_COUNT) * 0.85);
+      onProgress(((index + 1) / sampling.times.length) * 0.35);
     }
-    const maxShift = Math.max(2, Math.round(Math.max(width, height) * 0.025));
-    const voxels = buildMotionVolume(frames, width, height, maxShift);
+    const prepared = await prepareSubjectVolume(
+      frames,
+      width,
+      height,
+      FRAME_COUNT,
+      createModelSubjectRemover(),
+      (progress) => onProgress(0.35 + progress * 0.65),
+    );
+    const shotFrameCount = prepared.shot.end - prepared.shot.start;
+    const shotDuration = shotFrameCount / sampling.frameRate;
     onProgress(1);
 
     return {
@@ -107,13 +186,13 @@ export async function buildVolumeFromVideo(
         width,
         height,
         depth: FRAME_COUNT,
-        durationSeconds: sampling.durationSeconds,
-        frameRate: sampling.frameRate,
+        durationSeconds: shotDuration,
+        frameRate: FRAME_COUNT / shotDuration,
         title: file.name,
         sourceUrl: 'https://local.invalid/user-video',
         license: 'User-provided local file',
       },
-      voxels,
+      voxels: prepared.voxels,
       presentation: { timeDepth: 1 },
     };
   } finally {

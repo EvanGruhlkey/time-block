@@ -1,18 +1,18 @@
 # Time Volume
 
-A local video stabilized and transformed into a block of motion you can move through.
+A local video transformed into a block of motion you can move through.
 
-Choose a video and its first five seconds are processed entirely in your browser. The frames are stabilized, the stationary background is removed, and the moving subject is stacked along the depth axis. Scroll or use the arrow keys to slice through its motion over time.
+Choose a video and its first five seconds are processed in your browser. The most active shot is selected, the person is cut away from the background, and the action is stacked along the depth axis. Scroll or use the arrow keys to slice through its motion over time.
 
 ![A video shown as a slice through a three-dimensional time volume](media/time-volume.jpg)
 
 ## How it works
 
 1. **Choose.** A local video stays on the device; the app never uploads it to a server.
-2. **Sample.** The browser takes 120 chronological frames from up to the first five seconds and fits the video's longest edge to 256 pixels without changing its shape.
-3. **Stabilize.** Background motion is estimated between neighboring frames and removed before stacking.
-4. **Isolate.** A temporal background plate is reconstructed and subtracted with soft edges, leaving the moving subject.
-5. **Pack.** The transparent subject frames are packed chronologically into one GPU-ready RGBA volume.
+2. **Sample.** The browser samples up to the first five seconds and fits the video's longest edge to 256 pixels without changing its shape.
+3. **Select.** Hard cuts are detected and the most active part of the chosen video is kept.
+4. **Isolate.** A local person-segmentation model removes the background and rejects stray mask fragments.
+5. **Pack.** The transparent subject frames are expanded to 120 chronological slices and packed into one GPU-ready RGBA volume.
 6. **Volume.** A GLSL ray marcher combines those frames into the translucent sculpture of the subject's motion.
 7. **Slice.** Moving through the recording changes the volume's physical depth, revealing or removing its temporal history.
 8. **Explore.** The wheel and arrow keys move through time. Dragging orbits the camera and pinching zooms.
@@ -22,7 +22,7 @@ Choose a video and its first five seconds are processed entirely in your browser
 ```mermaid
 flowchart LR
   V["Local video file"] --> B["Native browser decoder + Canvas"]
-  B --> P["Stabilize + reconstruct background"]
+  B --> P["Select action shot + isolate person"]
   P --> R["Masked RGBA motion volume\nup to 256 × 256 × 120"]
   B --> M["In-memory metadata"]
   R --> T["WebGL 3D texture"]
