@@ -1,7 +1,7 @@
 import type { VolumeAsset } from './volume';
-import { isolateMotion, stabilizeFrames } from './motion-volume';
+import { stabilizeFrames } from './motion-volume';
 import { selectActionShot, type ShotRange } from './shot-detection';
-import { fadeTemporalEdges, resampleFrames } from './subject-mask';
+import { resampleFrames } from './subject-mask';
 
 const MAX_EDGE = 256;
 const FRAME_COUNT = 120;
@@ -22,7 +22,6 @@ export interface VolumeDimensions {
 export interface PreparedSubjectVolume {
   shot: ShotRange;
   voxels: Uint8Array;
-  frames: Uint8Array;
 }
 
 export function fitVolumeDimensions(
@@ -101,22 +100,14 @@ export async function prepareSubjectVolume(
     height,
     Math.round(Math.min(width, height) * 0.05),
   );
-  const sampledMotion = fadeTemporalEdges(
-    resampleFrames(isolateMotion(stabilized, width, height), depth),
-    Math.max(1, Math.round(depth * 0.08)),
-  );
   const sampledFrames = resampleFrames(stabilized, depth);
   const voxels = new Uint8Array(width * height * depth * 4);
-  const fullFrames = new Uint8Array(voxels.length);
-  sampledMotion.forEach((pixels, index) => {
-    voxels.set(packVideoFrame(pixels, width, height), index * pixels.length);
-    fullFrames.set(
-      packVideoFrame(sampledFrames[index]!, width, height),
-      index * pixels.length,
-    );
+  sampledFrames.forEach((pixels, index) => {
+    const packed = packVideoFrame(pixels, width, height);
+    voxels.set(packed, index * pixels.length);
   });
   onProgress(1);
-  return { shot, voxels, frames: fullFrames };
+  return { shot, voxels };
 }
 
 export async function buildVolumeFromVideo(
@@ -174,7 +165,6 @@ export async function buildVolumeFromVideo(
         license: 'User-provided local file',
       },
       voxels: prepared.voxels,
-      frames: prepared.frames,
       presentation: { timeDepth: 1 },
     };
   } finally {

@@ -70,11 +70,8 @@ describe('browser video sampling', () => {
 
     expect(prepared.shot).toEqual({ start: 0, end: 2 });
     expect(prepared.voxels).toHaveLength(5 * 4);
-    expect(prepared.voxels[3]).toBe(0);
-    expect(prepared.voxels[19]).toBe(0);
-    expect(prepared.frames).toHaveLength(5 * 4);
-    expect(prepared.frames[3]).toBe(255);
-    expect(prepared.frames[19]).toBe(255);
+    expect(prepared.voxels[3]).toBe(255);
+    expect(prepared.voxels[19]).toBe(255);
   });
 
   it('preserves output depth after preprocessing fewer source frames', async () => {

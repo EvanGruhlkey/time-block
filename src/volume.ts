@@ -12,7 +12,6 @@ export interface VolumeMetadata {
 export interface VolumeAsset {
   metadata: VolumeMetadata;
   voxels: Uint8Array;
-  frames?: Uint8Array;
   presentation?: import('./state').VolumePresentation;
 }
 

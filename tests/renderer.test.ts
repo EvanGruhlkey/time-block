@@ -21,16 +21,20 @@ describe('space-time block geometry', () => {
     });
   });
 
-  it('rejects weak mask opacity before it accumulates through depth', () => {
+  it('renders discrete rectangular video slices throughout the block', () => {
     expect(fragmentShader).toContain(
-      'sampleColor.a = smoothstep(0.18, 0.70, sampleColor.a);',
+      'float frameTime = (floor(time * uFrameCount) + 0.5) / uFrameCount;',
+    );
+    expect(fragmentShader).toContain(
+      'vec4 sampleColor = texture(uFrames, vec3(position.xy, frameTime));',
     );
   });
 
-  it('renders the current complete video frame in front of its trail', () => {
+  it('keeps the current complete frame opaque in front of prior slices', () => {
     expect(fragmentShader).toContain('uniform sampler3D uFrames;');
     expect(fragmentShader).toContain(
       'texture(uFrames, vec3(framePosition.xy, uDepth))',
     );
+    expect(fragmentShader).not.toContain('frameColor.a *= 1.0 - smoothstep');
   });
 });

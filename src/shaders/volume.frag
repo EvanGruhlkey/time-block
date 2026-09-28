@@ -1,7 +1,6 @@
 precision highp float;
 precision highp sampler3D;
 
-uniform sampler3D uVolume;
 uniform sampler3D uFrames;
 uniform float uStartDepth;
 uniform float uDepth;
@@ -40,9 +39,9 @@ void main() {
 
     vec3 position = vOrigin + rayDirection * distance;
     float time = mix(uStartDepth, uDepth, position.z);
-    vec4 sampleColor = texture(uVolume, vec3(position.xy, time));
-    sampleColor.a = smoothstep(0.18, 0.70, sampleColor.a);
-    sampleColor.a = 1.0 - pow(1.0 - sampleColor.a, opacityScale);
+    float frameTime = (floor(time * uFrameCount) + 0.5) / uFrameCount;
+    vec4 sampleColor = texture(uFrames, vec3(position.xy, frameTime));
+    sampleColor.a = 1.0 - pow(1.0 - 0.075 * sampleColor.a, opacityScale);
     accumulated.rgb +=
       (1.0 - accumulated.a) * sampleColor.a * sampleColor.rgb;
     accumulated.a += (1.0 - accumulated.a) * sampleColor.a;
@@ -59,7 +58,6 @@ void main() {
       all(lessThanEqual(framePosition.xy, vec2(1.0)))
     ) {
       frameColor = texture(uFrames, vec3(framePosition.xy, uDepth));
-      frameColor.a *= 1.0 - smoothstep(0.05, 0.25, uDepth);
     }
   }
 

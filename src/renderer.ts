@@ -33,7 +33,6 @@ export class WebGLUnavailableError extends Error {
 
 interface Resources {
   texture: Data3DTexture;
-  frames: Data3DTexture;
   material: RawShaderMaterial;
   geometry: BoxGeometry;
   mesh: Mesh<BoxGeometry, RawShaderMaterial>;
@@ -205,12 +204,6 @@ export function createVolumeRenderer(
 function createResources(asset: VolumeAsset): Resources {
   const { width, height, depth } = asset.metadata;
   const texture = createVolumeTexture(asset.voxels, width, height, depth);
-  const frames = createVolumeTexture(
-    asset.frames ?? asset.voxels,
-    width,
-    height,
-    depth,
-  );
   const material = new RawShaderMaterial({
     glslVersion: GLSL3,
     vertexShader,
@@ -219,8 +212,7 @@ function createResources(asset: VolumeAsset): Resources {
     transparent: true,
     depthWrite: false,
     uniforms: {
-      uVolume: { value: texture },
-      uFrames: { value: frames },
+      uFrames: { value: texture },
       uStartDepth: { value: 0 },
       uDepth: { value: 0.5 },
       uFrameCount: { value: depth },
@@ -231,7 +223,6 @@ function createResources(asset: VolumeAsset): Resources {
 
   return {
     texture,
-    frames,
     material,
     geometry,
     mesh,
@@ -259,7 +250,6 @@ function createVolumeTexture(
 
 function disposeResources(resources: Resources): void {
   resources.texture.dispose();
-  resources.frames.dispose();
   resources.material.dispose();
   resources.geometry.dispose();
 }
