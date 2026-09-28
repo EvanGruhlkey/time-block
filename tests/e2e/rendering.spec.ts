@@ -71,12 +71,18 @@ test('renders the volume and survives one context loss cycle', async ({
     element.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
   });
   await expect(canvas).toHaveAttribute('data-renderer', 'lost');
+  const rendersBeforeRestore = Number(
+    await canvas.getAttribute('data-render-count'),
+  );
 
   await canvas.evaluate((element) => {
     element.dispatchEvent(new Event('webglcontextrestored'));
   });
   await expect(canvas).toHaveAttribute('data-renderer', 'ready');
   await expect(canvas).toHaveAttribute('data-restores', '1');
+  await expect
+    .poll(async () => Number(await canvas.getAttribute('data-render-count')))
+    .toBeGreaterThan(rendersBeforeRestore);
 });
 
 function pixelLuminance(

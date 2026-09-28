@@ -75,9 +75,18 @@ export function mountApp(root: HTMLElement): AppHandle {
 
   const controls = createControls(canvas, {
     dispatch,
-    orbit: (dx, dy) => camera.orbit(dx, dy),
-    zoom: (delta) => camera.zoom(delta),
-    focus: () => camera.focus(),
+    orbit: (dx, dy) => {
+      camera.orbit(dx, dy);
+      renderer?.start();
+    },
+    zoom: (delta) => {
+      camera.zoom(delta);
+      renderer?.start();
+    },
+    focus: () => {
+      camera.focus();
+      renderer?.start();
+    },
   });
   const chooser = createVideoChooser(root, (file) => void loadFile(file));
 

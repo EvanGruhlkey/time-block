@@ -1,4 +1,5 @@
 import {
+  BackSide,
   BoxGeometry,
   ClampToEdgeWrapping,
   Data3DTexture,
@@ -90,11 +91,12 @@ export function createVolumeRenderer(
   let resumeAfterRestore = false;
   let frameRequest = 0;
   let restoreCount = 0;
+  let renderCount = 0;
   let disposed = false;
 
-  const draw = (): void => {
-    if (!currentState || disposed) return;
-    camera.update();
+  const draw = (): boolean => {
+    if (!currentState || disposed) return false;
+    const cameraMoving = camera.update();
     const uniforms = resources.material.uniforms;
     const block = timeBlockTransform(
       currentState.frame,
@@ -114,12 +116,15 @@ export function createVolumeRenderer(
       .map((value) => value.toFixed(5))
       .join(',');
     renderer.render(scene, camera.camera);
+    renderCount += 1;
+    canvas.dataset.renderCount = String(renderCount);
+    return cameraMoving;
   };
 
   const loop = (): void => {
     if (!running || disposed) return;
-    draw();
-    frameRequest = requestAnimationFrame(loop);
+    if (draw()) frameRequest = requestAnimationFrame(loop);
+    else running = false;
   };
 
   const stop = (): void => {
@@ -150,6 +155,7 @@ export function createVolumeRenderer(
     restoreCount += 1;
     canvas.dataset.restores = String(restoreCount);
     canvas.dataset.renderer = 'ready';
+    draw();
     if (resumeAfterRestore) start();
   };
 
@@ -212,10 +218,14 @@ function createResources(asset: VolumeAsset): Resources {
     glslVersion: GLSL3,
     vertexShader,
     fragmentShader,
+    side: BackSide,
+    transparent: true,
+    depthWrite: false,
     uniforms: {
       uVolume: { value: texture },
       uStartDepth: { value: 0 },
       uDepth: { value: 0.5 },
+      uFrameCount: { value: depth },
     },
   });
   const geometry = new BoxGeometry(1, 1, 1);

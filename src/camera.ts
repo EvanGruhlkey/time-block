@@ -6,7 +6,7 @@ export interface CameraController {
   zoom(delta: number): void;
   focus(): void;
   resize(width: number, height: number): void;
-  update(): void;
+  update(): boolean;
   reset(): void;
   dispose(): void;
 }
@@ -79,7 +79,11 @@ export function createCamera(
       camera.updateProjectionMatrix();
     },
     update() {
-      if (disposed) return;
+      if (disposed) return false;
+      const moving =
+        Math.abs(current.azimuth - target.azimuth) > 0.0001 ||
+        Math.abs(current.polar - target.polar) > 0.0001 ||
+        Math.abs(current.distance - target.distance) > 0.0001;
       const damping = reducedMotion ? 1 : 0.12;
       current.azimuth = MathUtils.lerp(
         current.azimuth,
@@ -93,6 +97,7 @@ export function createCamera(
         damping,
       );
       apply();
+      return moving;
     },
     reset() {
       Object.assign(current, INITIAL);

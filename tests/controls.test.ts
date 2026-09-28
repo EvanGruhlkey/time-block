@@ -112,6 +112,16 @@ describe('controls', () => {
 });
 
 describe('camera', () => {
+  it('reports motion only while the damped camera is changing', () => {
+    const camera = createCamera(document.createElement('canvas'), false);
+
+    expect(camera.update()).toBe(false);
+    camera.orbit(20, 0);
+    expect(camera.update()).toBe(true);
+
+    camera.dispose();
+  });
+
   it('keeps orbit and zoom inside the approved bounds', () => {
     const camera = createCamera(document.createElement('canvas'), true);
 
