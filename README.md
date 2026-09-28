@@ -1,8 +1,8 @@
 # Time Volume
 
-A local video transformed into a block of time you can move through.
+A local video stabilized and transformed into a block of motion you can move through.
 
-Choose a video and its first five seconds are processed entirely in your browser. Every sampled frame is stacked along the depth axis; scroll or use the arrow keys to slice through the recording while its history remains visible as a solid space-time block.
+Choose a video and its first five seconds are processed entirely in your browser. The frames are stabilized, the stationary background is removed, and the moving subject is stacked along the depth axis. Scroll or use the arrow keys to slice through its motion over time.
 
 ![A video shown as a slice through a three-dimensional time volume](media/time-volume.jpg)
 
@@ -10,23 +10,25 @@ Choose a video and its first five seconds are processed entirely in your browser
 
 1. **Choose.** A local video stays on the device; the app never uploads it to a server.
 2. **Sample.** The browser takes 120 chronological frames from up to the first five seconds and fits the video's longest edge to 256 pixels without changing its shape.
-3. **Pack.** The frames are packed in chronological order into one GPU-ready RGBA volume.
-4. **Upload.** The browser loads that volume into a WebGL 3D texture.
-5. **Volume.** The front face shows the selected video frame while the top and sides expose exact spatial rows and columns evolving through time.
-6. **Slice.** Moving through the recording changes the block's physical depth, revealing or removing its temporal history.
-7. **Explore.** The wheel and arrow keys move through time. Dragging orbits the camera and pinching zooms.
+3. **Stabilize.** Background motion is estimated between neighboring frames and removed before stacking.
+4. **Isolate.** A temporal background plate is reconstructed and subtracted with soft edges, leaving the moving subject.
+5. **Pack.** The transparent subject frames are packed chronologically into one GPU-ready RGBA volume.
+6. **Volume.** A GLSL ray marcher combines those frames into the translucent sculpture of the subject's motion.
+7. **Slice.** Moving through the recording changes the volume's physical depth, revealing or removing its temporal history.
+8. **Explore.** The wheel and arrow keys move through time. Dragging orbits the camera and pinching zooms.
 
 ## System design
 
 ```mermaid
 flowchart LR
   V["Local video file"] --> B["Native browser decoder + Canvas"]
-  B --> R["Aspect-correct RGBA volume\nup to 256 × 256 × 120"]
+  B --> P["Stabilize + reconstruct background"]
+  P --> R["Masked RGBA motion volume\nup to 256 × 256 × 120"]
   B --> M["In-memory metadata"]
   R --> T["WebGL 3D texture"]
   M --> T
-  T --> H["Space-time block surfaces"]
-  T --> S["Selected front frame"]
+  T --> H["Ray-marched motion history"]
+  T --> S["Selected time depth"]
   I["Wheel, keys, drag, pinch"] --> A["Application state"]
   A --> H
   A --> S
