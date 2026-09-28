@@ -1,4 +1,5 @@
 import type { VolumeAsset } from './volume';
+import { buildMotionVolume } from './motion-volume';
 
 const MAX_EDGE = 256;
 const FRAME_COUNT = 120;
@@ -89,15 +90,17 @@ export async function buildVolumeFromVideo(
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('Canvas video processing is unavailable.');
 
-    const voxels = new Uint8Array(width * height * FRAME_COUNT * 4);
+    const frames: Uint8ClampedArray[] = [];
     for (let index = 0; index < sampling.times.length; index += 1) {
       await seek(video, sampling.times[index]!);
       context.drawImage(video, 0, 0, width, height);
       const frame = context.getImageData(0, 0, width, height);
-      const packed = packVideoFrame(frame.data, width, height);
-      voxels.set(packed, index * width * height * 4);
-      onProgress((index + 1) / FRAME_COUNT);
+      frames.push(frame.data);
+      onProgress(((index + 1) / FRAME_COUNT) * 0.85);
     }
+    const maxShift = Math.max(2, Math.round(Math.max(width, height) * 0.025));
+    const voxels = buildMotionVolume(frames, width, height, maxShift);
+    onProgress(1);
 
     return {
       metadata: {
