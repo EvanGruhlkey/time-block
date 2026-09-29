@@ -1,19 +1,29 @@
 import {
-  SelfieSegmentation,
-  type Results,
-} from '@mediapipe/selfie_segmentation';
+  FilesetResolver,
+  InteractiveSegmenter,
+  ObjectDetector,
+  type Detection,
+  type RegionOfInterest,
+} from '@mediapipe/tasks-vision';
 import type { SubjectRemover } from './subject-mask';
 
-const CDN =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/';
-let segmenterPromise: Promise<SelfieSegmentation> | null = null;
-let resolveResult: ((results: Results) => void) | null = null;
+const VERSION = '0.10.35';
+const WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm`;
+const MODEL =
+  'https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite';
+const DETECTOR_MODEL =
+  'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite';
+let visionPromise: ReturnType<typeof FilesetResolver.forVisionTasks> | null =
+  null;
+let segmenterPromise: Promise<InteractiveSegmenter> | null = null;
+let detectorPromise: Promise<ObjectDetector> | null = null;
 let inferenceQueue = Promise.resolve();
 
 export function createModelSubjectRemover(): SubjectRemover {
+  const point = { x: 0.5, y: 0.5 };
   return (pixels, width, height) => {
     const inference = inferenceQueue.then(() =>
-      removeSubject(pixels, width, height),
+      segmentScene(pixels, width, height, point),
     );
     inferenceQueue = inference.then(
       () => undefined,
@@ -23,80 +33,93 @@ export function createModelSubjectRemover(): SubjectRemover {
   };
 }
 
-async function removeSubject(
+async function segmentScene(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
+  point: { x: number; y: number },
 ): Promise<Uint8ClampedArray> {
   segmenterPromise ??= createSegmenter();
   const segmenter = await segmenterPromise;
-  const input = document.createElement('canvas');
-  input.width = width;
-  input.height = height;
-  const source = document.createElement('canvas');
-  source.width = width;
-  source.height = height;
-  source
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas
     .getContext('2d')!
-    .putImageData(
-      new ImageData(new Uint8ClampedArray(pixels), width, height),
-      0,
-      0,
-    );
-  const cropX = Math.round(width * 0.275);
-  const cropWidth = width - cropX * 2;
-  const cropY = Math.round(height * 0.1);
-  const cropHeight = height - cropY * 2;
-  input
-    .getContext('2d')!
-    .drawImage(
-      source,
-      cropX,
-      cropY,
-      cropWidth,
-      cropHeight,
-      0,
-      0,
-      width,
-      height,
-    );
-  const result = new Promise<Results>((resolve) => {
-    resolveResult = resolve;
-  });
-  await segmenter.send({ image: input });
-  const { segmentationMask } = await result;
-  const output = document.createElement('canvas');
-  output.width = width;
-  output.height = height;
-  const context = output.getContext('2d', { willReadFrequently: true })!;
-  context.drawImage(
-    segmentationMask,
-    0,
-    0,
-    width,
-    height,
-    cropX,
-    cropY,
-    cropWidth,
-    cropHeight,
-  );
-  const rgba = context.getImageData(0, 0, width, height).data;
-  const mask = new Uint8ClampedArray(width * height);
-  for (let index = 0; index < mask.length; index += 1) {
-    mask[index] = rgba[index * 4]!;
+    .putImageData(new ImageData(pixels.slice(), width, height), 0, 0);
+  detectorPromise ??= createDetector();
+  const detector = await detectorPromise;
+  const detections = detector.detect(canvas).detections;
+  const region = chooseDetectionRegion(detections, width, height, point);
+  const result = segmenter.segment(canvas, region);
+  const confidence = result.confidenceMasks?.at(-1)?.getAsFloat32Array();
+  if (!confidence) throw new Error('Scene segmentation did not return a mask.');
+  const mask = new Uint8ClampedArray(confidence.length);
+  for (let index = 0; index < confidence.length; index += 1) {
+    mask[index] = Math.round(confidence[index]! * 255);
   }
+  result.close();
   return mask;
 }
 
-async function createSegmenter(): Promise<SelfieSegmentation> {
-  const segmenter = new SelfieSegmentation({
-    locateFile: (file) => `${CDN}${file}`,
+async function createSegmenter(): Promise<InteractiveSegmenter> {
+  visionPromise ??= FilesetResolver.forVisionTasks(WASM);
+  const vision = await visionPromise;
+  return InteractiveSegmenter.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: MODEL },
+    outputCategoryMask: false,
+    outputConfidenceMasks: true,
+    runningMode: 'IMAGE',
   });
-  segmenter.setOptions({ modelSelection: 1, selfieMode: false });
-  segmenter.onResults((results) => {
-    resolveResult?.(results);
-    resolveResult = null;
+}
+
+async function createDetector(): Promise<ObjectDetector> {
+  visionPromise ??= FilesetResolver.forVisionTasks(WASM);
+  const vision = await visionPromise;
+  return ObjectDetector.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: DETECTOR_MODEL },
+    scoreThreshold: 0.2,
+    runningMode: 'IMAGE',
   });
-  await segmenter.initialize();
-  return segmenter;
+}
+
+function chooseDetectionRegion(
+  detections: Detection[],
+  width: number,
+  height: number,
+  focus: { x: number; y: number },
+): RegionOfInterest {
+  let best: Detection | undefined;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  const people = detections.filter((detection) =>
+    detection.categories.some(
+      (category) => category.categoryName.toLowerCase() === 'person',
+    ),
+  );
+  for (const detection of people.length > 0 ? people : detections) {
+    const box = detection.boundingBox;
+    const confidence = detection.categories[0]?.score ?? 0;
+    if (!box) continue;
+    const x = (box.originX + box.width / 2) / width;
+    const y = (box.originY + box.height / 2) / height;
+    const distance = Math.hypot(x - focus.x, y - focus.y);
+    const area = (box.width * box.height) / (width * height);
+    const score = confidence - distance * 0.75 - area * 0.2;
+    if (score > bestScore) {
+      bestScore = score;
+      best = detection;
+    }
+  }
+  const box = best?.boundingBox;
+  if (!box) return { keypoint: focus };
+  const x = (box.originX + box.width / 2) / width;
+  const centerY = (box.originY + box.height / 2) / height;
+  const verticalOffset = box.height / height / 5;
+  return {
+    scribble: [
+      { x, y: centerY - verticalOffset },
+      { x, y: centerY },
+      { x, y: centerY + verticalOffset },
+    ],
+  };
 }
