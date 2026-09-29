@@ -4,6 +4,7 @@ import {
   estimateTranslation,
   isolatePrimaryMotion,
   isolateMotion,
+  isolateTemporalMotion,
   stabilizeFrames,
   translateFrame,
 } from '../src/motion-volume';
@@ -117,6 +118,24 @@ describe('motion volume preprocessing', () => {
       [255, 0, 0],
       [0, 255, 0],
       [0, 0, 255],
+    ]);
+  });
+
+  it('isolates pixels that change between adjacent stabilized frames', () => {
+    const frames = [
+      frame(3, 1, [[0, 0]]),
+      frame(3, 1, [[1, 0]]),
+      frame(3, 1, [[2, 0]]),
+    ];
+
+    const isolated = isolateTemporalMotion(frames);
+
+    expect(
+      isolated.map((pixels) => [pixels[3], pixels[7], pixels[11]]),
+    ).toEqual([
+      [255, 255, 0],
+      [0, 255, 0],
+      [0, 255, 255],
     ]);
   });
 

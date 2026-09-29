@@ -156,6 +156,27 @@ export function isolateMotion(
   });
 }
 
+export function isolateTemporalMotion(
+  frames: Uint8ClampedArray[],
+): Uint8ClampedArray[] {
+  return frames.map((pixels, frameIndex) => {
+    const before = frames[frameIndex - 1];
+    const after = frames[frameIndex + 1];
+    const output = pixels.slice();
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      const differenceBefore = before
+        ? colorDifference(pixels, before, offset)
+        : Number.POSITIVE_INFINITY;
+      const differenceAfter = after
+        ? colorDifference(pixels, after, offset)
+        : Number.POSITIVE_INFINITY;
+      const difference = Math.min(differenceBefore, differenceAfter);
+      output[offset + 3] = Math.round(smoothstep(30, 90, difference) * 255);
+    }
+    return output;
+  });
+}
+
 export function isolatePrimaryMotion(
   frames: Uint8ClampedArray[],
   width: number,
@@ -273,6 +294,18 @@ function luma(pixels: Uint8ClampedArray, offset: number): number {
     pixels[offset]! * 0.299 +
     pixels[offset + 1]! * 0.587 +
     pixels[offset + 2]! * 0.114
+  );
+}
+
+function colorDifference(
+  left: Uint8ClampedArray,
+  right: Uint8ClampedArray,
+  offset: number,
+): number {
+  return Math.max(
+    Math.abs(left[offset]! - right[offset]!),
+    Math.abs(left[offset + 1]! - right[offset + 1]!),
+    Math.abs(left[offset + 2]! - right[offset + 2]!),
   );
 }
 

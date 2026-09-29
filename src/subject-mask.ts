@@ -52,10 +52,36 @@ export function fadeTemporalEdges(
   });
 }
 
+export function clearMaskEdges(
+  frames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+  padding: number,
+): Uint8ClampedArray[] {
+  return frames.map((pixels) => {
+    const output = pixels.slice();
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (
+          x >= padding &&
+          x < width - padding &&
+          y >= padding &&
+          y < height - padding
+        ) {
+          continue;
+        }
+        output[(y * width + x) * 4 + 3] = 0;
+      }
+    }
+    return output;
+  });
+}
+
 export type SubjectRemover = (
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
+  focus?: { x: number; y: number },
 ) => Promise<Uint8ClampedArray>;
 
 export async function maskSubjectFrames(
@@ -64,15 +90,50 @@ export async function maskSubjectFrames(
   height: number,
   removeBackground: SubjectRemover,
   onFrame: (complete: number) => void = () => undefined,
+  focusFrames?: Uint8ClampedArray[],
 ): Promise<Uint8ClampedArray[]> {
   const masked: Uint8ClampedArray[] = [];
   for (let index = 0; index < frames.length; index += 1) {
     const pixels = frames[index]!;
-    const mask = await removeBackground(pixels, width, height);
+    const focus = focusFrames?.[index]
+      ? motionFocus(focusFrames[index]!, width, height)
+      : undefined;
+    const mask = await removeBackground(pixels, width, height, focus);
     masked.push(applySubjectMask(pixels, mask));
     onFrame((index + 1) / frames.length);
   }
   return masked;
+}
+
+export function motionFocus(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  let weightedX = 0;
+  let weightedY = 0;
+  let weight = 0;
+  for (
+    let y = Math.floor(height * 0.08);
+    y < Math.ceil(height * 0.92);
+    y += 1
+  ) {
+    for (
+      let x = Math.floor(width * 0.08);
+      x < Math.ceil(width * 0.92);
+      x += 1
+    ) {
+      const alpha = pixels[(y * width + x) * 4 + 3]!;
+      if (alpha < 160) continue;
+      const pixelWeight = alpha * alpha;
+      weightedX += x * pixelWeight;
+      weightedY += y * pixelWeight;
+      weight += pixelWeight;
+    }
+  }
+  return weight === 0
+    ? { x: 0.5, y: 0.5 }
+    : { x: weightedX / weight / width, y: weightedY / weight / height };
 }
 
 export function mergeNearbyMotion(
@@ -116,6 +177,103 @@ export function mergeNearbyMotion(
         merged[offset] = Math.max(merged[offset]!, motion[offset]!);
     }
     return merged;
+  });
+}
+
+export function keepMovingSubject(
+  modelFrames: Uint8ClampedArray[],
+  motionFrames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+  radius: number,
+): Uint8ClampedArray[] {
+  if (modelFrames.length !== motionFrames.length) {
+    throw new Error('Subject masks have mismatched frame counts.');
+  }
+  return modelFrames.map((model, frameIndex) => {
+    const motion = motionFrames[frameIndex]!;
+    if (model.length !== motion.length) {
+      throw new Error('Subject masks have mismatched dimensions.');
+    }
+    const movingNearby = new Uint8Array(width * height);
+    for (let index = 0; index < movingNearby.length; index += 1) {
+      if (motion[index * 4 + 3]! < 40) continue;
+      const centerX = index % width;
+      const centerY = Math.floor(index / width);
+      for (
+        let y = Math.max(0, centerY - radius);
+        y <= Math.min(height - 1, centerY + radius);
+        y += 1
+      ) {
+        for (
+          let x = Math.max(0, centerX - radius);
+          x <= Math.min(width - 1, centerX + radius);
+          x += 1
+        ) {
+          movingNearby[y * width + x] = 1;
+        }
+      }
+    }
+    const output = model.slice();
+    for (let index = 0; index < movingNearby.length; index += 1) {
+      if (!movingNearby[index]) output[index * 4 + 3] = 0;
+    }
+    return output;
+  });
+}
+
+export function selectMovingSubject(
+  modelFrames: Uint8ClampedArray[],
+  motionFrames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+): Uint8ClampedArray[] {
+  if (modelFrames.length !== motionFrames.length) {
+    throw new Error('Subject masks have mismatched frame counts.');
+  }
+  return modelFrames.map((model, frameIndex) => {
+    const motion = motionFrames[frameIndex]!;
+    const visited = new Uint8Array(width * height);
+    let best: number[] = [];
+    let bestScore = 0;
+    for (let start = 0; start < visited.length; start += 1) {
+      if (visited[start] || model[start * 4 + 3]! < 40) continue;
+      const component: number[] = [];
+      const queue = [start];
+      visited[start] = 1;
+      let motionTotal = 0;
+      for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const index = queue[cursor]!;
+        component.push(index);
+        motionTotal += motion[index * 4 + 3]!;
+        const x = index % width;
+        const neighbors = [index - width, index + width];
+        if (x > 0) neighbors.push(index - 1);
+        if (x < width - 1) neighbors.push(index + 1);
+        for (const neighbor of neighbors) {
+          if (neighbor < 0 || neighbor >= visited.length) continue;
+          if (visited[neighbor] || model[neighbor * 4 + 3]! < 40) continue;
+          visited[neighbor] = 1;
+          queue.push(neighbor);
+        }
+      }
+      const coverage = component.length / visited.length;
+      if (coverage > 0.15) continue;
+      const score =
+        (motionTotal / Math.max(1, component.length)) *
+        Math.min(1, component.length / 12);
+      if (score > bestScore) {
+        bestScore = score;
+        best = component;
+      }
+    }
+    const output = model.slice();
+    const keep = new Uint8Array(width * height);
+    for (const index of best) keep[index] = 1;
+    for (let index = 0; index < keep.length; index += 1) {
+      if (!keep[index]) output[index * 4 + 3] = 0;
+    }
+    return output;
   });
 }
 
