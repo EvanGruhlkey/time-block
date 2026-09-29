@@ -32,7 +32,7 @@ export function createState(
   }
 
   return {
-    frame: frameCount - 1,
+    frame: 0,
     frameCount,
     playing: false,
     ...presentation,
@@ -56,7 +56,7 @@ export function update(state: AppState, command: Command): AppState {
     case 'reset':
       return {
         ...state,
-        frame: state.frameCount - 1,
+        frame: 0,
         playing: false,
       };
   }

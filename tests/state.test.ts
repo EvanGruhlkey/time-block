@@ -16,9 +16,9 @@ describe('timeline state', () => {
     expect(createState(120, true).playing).toBe(false);
   });
 
-  it('starts with the complete time block visible', () => {
+  it('starts before any frames have been converted', () => {
     expect(createState(120, false)).toEqual({
-      frame: 119,
+      frame: 0,
       frameCount: 120,
       playing: false,
       timeDepth: 1,
@@ -37,7 +37,7 @@ describe('timeline state', () => {
 
     expect(next.frame).toBe(18);
     expect(next).not.toBe(state);
-    expect(state.frame).toBe(119);
+    expect(state.frame).toBe(0);
   });
 
   it('toggles playback', () => {

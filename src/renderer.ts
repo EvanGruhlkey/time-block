@@ -32,15 +32,15 @@ export class WebGLUnavailableError extends Error {
 }
 
 interface Resources {
-  texture: Data3DTexture;
+  trail: Data3DTexture;
+  frames: Data3DTexture;
   material: RawShaderMaterial;
   geometry: BoxGeometry;
   mesh: Mesh<BoxGeometry, RawShaderMaterial>;
 }
 
 export interface TimeBlockTransform {
-  sampleStart: number;
-  sampleDepth: number;
+  conversionDepth: number;
   scaleDepth: number;
   positionDepth: number;
 }
@@ -50,12 +50,10 @@ export function timeBlockTransform(
   frameCount: number,
   timeDepth: number,
 ): TimeBlockTransform {
-  const scaleDepth = timeDepth * ((frame + 1) / frameCount);
   return {
-    sampleStart: 0.5 / frameCount,
-    sampleDepth: (frame + 0.5) / frameCount,
-    scaleDepth,
-    positionDepth: (scaleDepth - timeDepth) / 2,
+    conversionDepth: (frame + 0.5) / frameCount,
+    scaleDepth: timeDepth,
+    positionDepth: 0,
   };
 }
 
@@ -103,8 +101,7 @@ export function createVolumeRenderer(
       currentState.frameCount,
       currentState.timeDepth,
     );
-    uniforms.uStartDepth!.value = block.sampleStart;
-    uniforms.uDepth!.value = block.sampleDepth;
+    uniforms.uConversionDepth!.value = block.conversionDepth;
     resources.mesh.scale.set(
       asset.metadata.width / asset.metadata.height,
       1,
@@ -203,7 +200,13 @@ export function createVolumeRenderer(
 
 function createResources(asset: VolumeAsset): Resources {
   const { width, height, depth } = asset.metadata;
-  const texture = createVolumeTexture(asset.voxels, width, height, depth);
+  const trail = createVolumeTexture(asset.voxels, width, height, depth);
+  const frames = createVolumeTexture(
+    asset.frames ?? asset.voxels,
+    width,
+    height,
+    depth,
+  );
   const material = new RawShaderMaterial({
     glslVersion: GLSL3,
     vertexShader,
@@ -212,9 +215,9 @@ function createResources(asset: VolumeAsset): Resources {
     transparent: true,
     depthWrite: false,
     uniforms: {
-      uFrames: { value: texture },
-      uStartDepth: { value: 0 },
-      uDepth: { value: 0.5 },
+      uTrail: { value: trail },
+      uFrames: { value: frames },
+      uConversionDepth: { value: 0 },
       uFrameCount: { value: depth },
     },
   });
@@ -222,7 +225,8 @@ function createResources(asset: VolumeAsset): Resources {
   const mesh = new Mesh(geometry, material);
 
   return {
-    texture,
+    trail,
+    frames,
     material,
     geometry,
     mesh,
@@ -249,7 +253,8 @@ function createVolumeTexture(
 }
 
 function disposeResources(resources: Resources): void {
-  resources.texture.dispose();
+  resources.trail.dispose();
+  resources.frames.dispose();
   resources.material.dispose();
   resources.geometry.dispose();
 }
