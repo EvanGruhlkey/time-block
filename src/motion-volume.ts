@@ -12,7 +12,11 @@ export function estimateTranslation(
 ): Translation {
   let best = { x: 0, y: 0 };
   let bestScore = Number.POSITIVE_INFINITY;
-  const stride = Math.max(1, Math.floor(Math.min(width, height) / 48));
+  const targetSamples = maxShift > 10 ? 24 : 48;
+  const stride = Math.max(
+    1,
+    Math.floor(Math.min(width, height) / targetSamples),
+  );
 
   for (let yShift = -maxShift; yShift <= maxShift; yShift += 1) {
     for (let xShift = -maxShift; xShift <= maxShift; xShift += 1) {

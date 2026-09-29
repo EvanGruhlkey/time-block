@@ -1,15 +1,15 @@
 import type { VolumeAsset } from './volume';
-import { isolateTemporalMotion, stabilizeFrames } from './motion-volume';
-import { createModelSubjectRemover } from './background-remover';
-import { selectActionShot, type ShotRange } from './shot-detection';
 import {
-  clearMaskEdges,
-  filterSubjectContrast,
-  keepMovingSubject,
+  isolateMotion,
+  isolateTemporalMotion,
+  stabilizeFrames,
+} from './motion-volume';
+import { createModelSubjectRemover } from './background-remover';
+import type { ShotRange } from './shot-detection';
+import {
+  fadeTemporalEdges,
   maskSubjectFrames,
-  mergeNearbyMotion,
   resampleFrames,
-  selectMovingSubject,
   type SubjectRemover,
 } from './subject-mask';
 
@@ -34,6 +34,47 @@ export interface PreparedSubjectVolume {
   shot: ShotRange;
   voxels: Uint8Array;
   frames: Uint8Array;
+}
+
+export function stabilizationRadius(width: number, height: number): number {
+  const edge = Math.min(width, height);
+  return Math.min(Math.floor((edge - 1) / 2), Math.round(edge * 0.18));
+}
+
+export function buildSubjectTrail(
+  stabilizedFrames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+  depth: number,
+): Uint8ClampedArray[] {
+  const isolated = isolateMotion(stabilizedFrames, width, height);
+  return fadeTemporalEdges(
+    resampleFrames(isolated, depth),
+    Math.max(1, Math.round(depth * 0.08)),
+  );
+}
+
+export async function buildModelTrail(
+  frames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+  depth: number,
+  removeBackground: SubjectRemover,
+  onProgress: (progress: number) => void = () => undefined,
+): Promise<Uint8ClampedArray[]> {
+  const motion = isolateTemporalMotion(frames);
+  const masked = await maskSubjectFrames(
+    frames,
+    width,
+    height,
+    removeBackground,
+    onProgress,
+    motion,
+  );
+  return fadeTemporalEdges(
+    resampleFrames(masked, depth),
+    Math.max(1, Math.round(depth * 0.08)),
+  );
 }
 
 export function fitVolumeDimensions(
@@ -97,55 +138,31 @@ export async function prepareSubjectVolume(
   removeBackground: SubjectRemover = createModelSubjectRemover(),
   onProgress: (progress: number) => void = () => undefined,
 ): Promise<PreparedSubjectVolume> {
-  const detected = selectActionShot(frames, width, height);
-  const trim =
-    detected.end - detected.start >= 8
-      ? Math.round((detected.end - detected.start) * 0.2)
-      : 0;
-  const shot = {
-    start: detected.start + trim,
-    end: detected.end - trim,
-  };
+  const shot = { start: 0, end: frames.length };
   const selected = frames.slice(shot.start, shot.end);
   const stabilized = stabilizeFrames(
     selected,
     width,
     height,
-    Math.round(Math.min(width, height) * 0.05),
+    stabilizationRadius(width, height),
   );
   const inferenceFrames = resampleFrames(
     stabilized,
     Math.min(MASK_FRAMES, stabilized.length),
   );
-  const motion = isolateTemporalMotion(inferenceFrames);
-  const masked = await maskSubjectFrames(
-    inferenceFrames,
-    width,
-    height,
-    removeBackground,
-    onProgress,
-    motion,
-  );
-  let subjects = mergeNearbyMotion(
-    selectMovingSubject(
-      keepMovingSubject(
-        filterSubjectContrast(masked, 90),
-        motion,
-        width,
-        height,
-        1,
-      ),
-      motion,
+  let sampledTrail: Uint8ClampedArray[];
+  try {
+    sampledTrail = await buildModelTrail(
+      inferenceFrames,
       width,
       height,
-    ),
-    motion,
-    width,
-    height,
-    2,
-  );
-  subjects = clearMaskEdges(subjects, width, height, 2);
-  const sampledTrail = resampleFrames(subjects, depth);
+      depth,
+      removeBackground,
+      onProgress,
+    );
+  } catch {
+    sampledTrail = buildSubjectTrail(stabilized, width, height, depth);
+  }
   const sampledFrames = resampleFrames(stabilized, depth);
   const voxels = new Uint8Array(width * height * depth * 4);
   const fullFrames = new Uint8Array(voxels.length);
