@@ -8,8 +8,10 @@ import { createModelSubjectRemover } from './background-remover';
 import type { ShotRange } from './shot-detection';
 import {
   fadeTemporalEdges,
+  keepMovingSubject,
   maskSubjectFrames,
   resampleFrames,
+  selectMovingSubject,
   type SubjectRemover,
 } from './subject-mask';
 
@@ -18,6 +20,7 @@ const FRAME_COUNT = 120;
 const SOURCE_FRAME_COUNT = 36;
 const MAX_DURATION_SECONDS = 5;
 const MASK_FRAMES = 24;
+export const VIDEO_TIME_DEPTH = 1.6;
 
 export interface VideoSampling {
   durationSeconds: number;
@@ -39,6 +42,28 @@ export interface PreparedSubjectVolume {
 export function stabilizationRadius(width: number, height: number): number {
   const edge = Math.min(width, height);
   return Math.min(Math.floor((edge - 1) / 2), Math.round(edge * 0.18));
+}
+
+export function centerOutIndices(count: number): number[] {
+  if (count <= 0) return [];
+  const center = Math.floor((count - 1) / 2);
+  const indices = [center];
+  for (let distance = 1; indices.length < count; distance += 1) {
+    if (center - distance >= 0) indices.push(center - distance);
+    if (center + distance < count) indices.push(center + distance);
+  }
+  return indices;
+}
+
+export function compactVisibleFrames(
+  frames: Uint8ClampedArray[],
+): Uint8ClampedArray[] {
+  return frames.filter((frame) => {
+    for (let offset = 3; offset < frame.length; offset += 4) {
+      if (frame[offset]! > 32) return true;
+    }
+    return false;
+  });
 }
 
 export function buildSubjectTrail(
@@ -63,16 +88,38 @@ export async function buildModelTrail(
   onProgress: (progress: number) => void = () => undefined,
 ): Promise<Uint8ClampedArray[]> {
   const motion = isolateTemporalMotion(frames);
-  const masked = await maskSubjectFrames(
-    frames,
+  const order = centerOutIndices(frames.length);
+  const orderedFrames = order.map((index) => frames[index]!);
+  const orderedMotion = order.map((index) => motion[index]!);
+  const orderedMasks = await maskSubjectFrames(
+    orderedFrames,
     width,
     height,
     removeBackground,
     onProgress,
-    motion,
+    orderedMotion,
   );
+  const masked = Array<Uint8ClampedArray>(frames.length);
+  order.forEach((frameIndex, orderIndex) => {
+    masked[frameIndex] = orderedMasks[orderIndex]!;
+  });
+  const moving = selectMovingSubject(
+    keepMovingSubject(masked, motion, width, height, 1),
+    motion,
+    width,
+    height,
+  );
+  const refined = masked.map((frame, index) => {
+    let foreground = 0;
+    for (let offset = 3; offset < frame.length; offset += 4) {
+      if (frame[offset]! > 32) foreground += 1;
+    }
+    return foreground / (frame.length / 4) > 0.15 ? moving[index]! : frame;
+  });
+  const visible = compactVisibleFrames(refined);
+  const trailFrames = visible.length >= 2 ? visible : refined;
   return fadeTemporalEdges(
-    resampleFrames(masked, depth),
+    resampleFrames(trailFrames, depth),
     Math.max(1, Math.round(depth * 0.08)),
   );
 }
@@ -234,7 +281,7 @@ export async function buildVolumeFromVideo(
       },
       voxels: prepared.voxels,
       frames: prepared.frames,
-      presentation: { timeDepth: 1 },
+      presentation: { timeDepth: VIDEO_TIME_DEPTH },
     };
   } finally {
     video.removeAttribute('src');

@@ -50,6 +50,24 @@ it('selects the model component with concentrated motion', () => {
   expect(selected[7 * 4 + 3]).toBe(255);
 });
 
+it('prefers a subject-sized component over a broad moving background', () => {
+  const model = new Uint8ClampedArray(100 * 4);
+  const motion = new Uint8ClampedArray(model.length);
+  for (let index = 0; index < 12; index += 1) {
+    model[index * 4 + 3] = 255;
+    motion[index * 4 + 3] = 180;
+  }
+  for (let index = 50; index < 54; index += 1) {
+    model[index * 4 + 3] = 255;
+    motion[index * 4 + 3] = 170;
+  }
+
+  const selected = selectMovingSubject([model], [motion], 100, 1)[0]!;
+
+  expect(selected[3]).toBe(0);
+  expect(selected[50 * 4 + 3]).toBe(255);
+});
+
 describe('subject masks', () => {
   it('replaces frame alpha with the soft model mask', () => {
     const pixels = new Uint8ClampedArray([

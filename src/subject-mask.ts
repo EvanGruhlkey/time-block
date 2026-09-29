@@ -261,7 +261,8 @@ export function selectMovingSubject(
       if (coverage > 0.15) continue;
       const score =
         (motionTotal / Math.max(1, component.length)) *
-        Math.min(1, component.length / 12);
+        Math.min(1, component.length / 12) *
+        Math.max(0.1, 1 - coverage / 0.15);
       if (score > bestScore) {
         bestScore = score;
         best = component;

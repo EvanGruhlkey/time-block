@@ -3,13 +3,35 @@ import {
   buildSubjectTrail,
   buildModelTrail,
   fitVolumeDimensions,
+  centerOutIndices,
+  compactVisibleFrames,
   packVideoFrame,
   prepareSubjectVolume,
   sampleVideoTimes,
   stabilizationRadius,
+  VIDEO_TIME_DEPTH,
 } from '../src/video-volume';
 
 describe('browser video sampling', () => {
+  it('uses an extended time axis for a readable subject trail', () => {
+    expect(VIDEO_TIME_DEPTH).toBe(1.6);
+  });
+
+  it('removes undetected gaps before building the trail', () => {
+    const empty = new Uint8ClampedArray([10, 20, 30, 0]);
+    const subject = new Uint8ClampedArray([10, 20, 30, 255]);
+
+    expect(compactVisibleFrames([subject, empty, subject])).toEqual([
+      subject,
+      subject,
+    ]);
+  });
+
+  it('tracks outward from the clearest middle frame', () => {
+    expect(centerOutIndices(5)).toEqual([2, 1, 3, 0, 4]);
+    expect(centerOutIndices(4)).toEqual([1, 0, 2, 3]);
+  });
+
   it('samples 36 source frames from the first five seconds', () => {
     const sampling = sampleVideoTimes(12);
 
@@ -135,25 +157,49 @@ describe('browser video sampling', () => {
   it('keeps only pixels selected by the tracked subject mask', async () => {
     const frames = Array.from(
       { length: 3 },
-      () => new Uint8ClampedArray([80, 80, 80, 255, 20, 30, 40, 255, 80, 80, 80, 255]),
+      () => new Uint8ClampedArray(20 * 4).fill(80),
     );
+    for (const frame of frames) {
+      for (let offset = 3; offset < frame.length; offset += 4) frame[offset] = 255;
+    }
     const focuses: Array<{ x: number; y: number } | undefined> = [];
     const trail = await buildModelTrail(
       frames,
-      3,
+      20,
       1,
       3,
       async (_pixels, _width, _height, focus) => {
         focuses.push(focus);
-        return new Uint8ClampedArray([0, 255, 0]);
+        const mask = new Uint8ClampedArray(20);
+        mask[10] = 255;
+        return mask;
       },
     );
 
-    expect(trail.map((frame) => [frame[3], frame[7], frame[11]])).toEqual([
-      [0, 0, 0],
-      [0, 255, 0],
-      [0, 0, 0],
-    ]);
+    expect(trail.map((frame) => frame[10 * 4 + 3])).toEqual([0, 255, 0]);
     expect(focuses.every((focus) => focus !== undefined)).toBe(true);
+  });
+
+  it('rejects a broad static mask around a smaller moving subject', async () => {
+    const makeFrame = (subject: number) => {
+      const pixels = new Uint8ClampedArray(40 * 4);
+      for (let index = 0; index < 40; index += 1) {
+        const value = index === subject ? 240 : 60;
+        pixels.set([value, value, value, 255], index * 4);
+      }
+      return pixels;
+    };
+    const frames = [20, 21, 22, 21, 20].map(makeFrame);
+    const trail = await buildModelTrail(
+      frames,
+      40,
+      1,
+      5,
+      async () => new Uint8ClampedArray(40).fill(255),
+    );
+    const middle = trail[2]!;
+
+    expect(middle[3]).toBe(0);
+    expect(middle[22 * 4 + 3]).toBe(255);
   });
 });
