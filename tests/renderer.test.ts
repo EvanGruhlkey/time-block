@@ -25,7 +25,19 @@ describe('space-time block geometry', () => {
       'float frameTime = (floor(time * uFrameCount) + 0.5) / uFrameCount;',
     );
     expect(fragmentShader).toContain(
-      'frameTime <= uConversionDepth ? texture(uTrail, samplePosition) : texture(uFrames, samplePosition)',
+      'bool converted = frameTime <= uConversionDepth;',
     );
+    expect(fragmentShader).toContain('? texture(uTrail, samplePosition)');
+    expect(fragmentShader).toContain(': texture(uFrames, samplePosition)');
+  });
+
+  it('renders separated cards instead of blending a solid frame volume', () => {
+    expect(fragmentShader).toContain('float slicePhase = fract(time * uFrameCount);');
+    expect(fragmentShader).toContain('if (sliceDistance > frameThickness) continue;');
+  });
+
+  it('keeps converted cutouts stronger than the remaining frame cards', () => {
+    expect(fragmentShader).toContain('const float trailOpacity = 0.72;');
+    expect(fragmentShader).toContain('const float frameOpacity = 0.34;');
   });
 });

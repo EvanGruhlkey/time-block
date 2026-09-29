@@ -29,21 +29,28 @@ void main() {
   float farDistance = bounds.y;
   if (nearDistance >= farDistance) discard;
 
-  float stepLength = (farDistance - nearDistance) / 128.0;
-  float opacityScale = uFrameCount / 128.0;
+  const float frameThickness = 0.28;
+  const float trailOpacity = 0.72;
+  const float frameOpacity = 0.34;
+  float stepLength = (farDistance - nearDistance) / 256.0;
   vec4 accumulated = vec4(0.0);
-  for (int stepIndex = 0; stepIndex < 128; stepIndex += 1) {
+  for (int stepIndex = 0; stepIndex < 256; stepIndex += 1) {
     float distance = nearDistance + (float(stepIndex) + 0.5) * stepLength;
     if (distance > farDistance || accumulated.a > 0.98) break;
 
     vec3 position = vOrigin + rayDirection * distance;
     float time = position.z;
+    float slicePhase = fract(time * uFrameCount);
+    float sliceDistance = abs(slicePhase - 0.5);
+    if (sliceDistance > frameThickness) continue;
     float frameTime = (floor(time * uFrameCount) + 0.5) / uFrameCount;
     vec3 samplePosition = vec3(position.xy, frameTime);
-    vec4 sampleColor =
-      frameTime <= uConversionDepth ? texture(uTrail, samplePosition) : texture(uFrames, samplePosition);
-    float layerOpacity = frameTime <= uConversionDepth ? 0.35 : 0.075;
-    sampleColor.a = 1.0 - pow(1.0 - layerOpacity * sampleColor.a, opacityScale);
+    bool converted = frameTime <= uConversionDepth;
+    vec4 sampleColor = converted
+      ? texture(uTrail, samplePosition)
+      : texture(uFrames, samplePosition);
+    float layerOpacity = converted ? trailOpacity : frameOpacity;
+    sampleColor.a *= layerOpacity;
     accumulated.rgb +=
       (1.0 - accumulated.a) * sampleColor.a * sampleColor.rgb;
     accumulated.a += (1.0 - accumulated.a) * sampleColor.a;
