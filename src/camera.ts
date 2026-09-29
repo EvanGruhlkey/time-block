@@ -20,7 +20,7 @@ interface OrbitState {
 const INITIAL: OrbitState = {
   azimuth: -0.62,
   polar: Math.PI * 0.42,
-  distance: 3.35,
+  distance: 4.2,
 };
 
 const MIN_POLAR = Math.PI * 0.18;

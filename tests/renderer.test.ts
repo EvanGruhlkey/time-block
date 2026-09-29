@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { timeBlockTransform } from '../src/renderer';
-import fragmentShader from '../src/shaders/volume.frag?raw';
+import { timeBlockLayers, timeBlockTransform } from '../src/renderer';
+import fragmentShader from '../src/shaders/slices.frag?raw';
+import vertexShader from '../src/shaders/slices.vert?raw';
 
 describe('space-time block geometry', () => {
   it('keeps the complete block depth while conversion starts', () => {
@@ -19,25 +20,20 @@ describe('space-time block geometry', () => {
     });
   });
 
-  it('converts rectangular frames into persistent trail slices', () => {
-    expect(fragmentShader).toContain('uniform sampler3D uTrail;');
-    expect(fragmentShader).toContain(
-      'float frameTime = (floor(time * uFrameCount) + 0.5) / uFrameCount;',
-    );
-    expect(fragmentShader).toContain(
-      'bool converted = frameTime <= uConversionDepth;',
-    );
-    expect(fragmentShader).toContain('? texture(uTrail, samplePosition)');
-    expect(fragmentShader).toContain(': texture(uFrames, samplePosition)');
+  it('uses fewer readable cards while retaining every trail pose', () => {
+    expect(timeBlockLayers(120)).toEqual({ cards: 32, trail: 120 });
+    expect(timeBlockLayers(12)).toEqual({ cards: 12, trail: 12 });
   });
 
-  it('renders separated cards instead of blending a solid frame volume', () => {
-    expect(fragmentShader).toContain('float slicePhase = fract(time * uFrameCount);');
-    expect(fragmentShader).toContain('if (sliceDistance > frameThickness) continue;');
+  it('positions every temporal layer as a separate plane', () => {
+    expect(vertexShader).toContain('gl_InstanceID');
+    expect(vertexShader).toContain('instanceMatrix');
   });
 
-  it('keeps converted cutouts stronger than the remaining frame cards', () => {
-    expect(fragmentShader).toContain('const float trailOpacity = 0.72;');
-    expect(fragmentShader).toContain('const float frameOpacity = 0.34;');
+  it('switches cards into persistent cutouts at the conversion edge', () => {
+    expect(fragmentShader).toContain('uniform float uMode;');
+    expect(fragmentShader).toContain('bool converted = vTime <= uConversionDepth;');
+    expect(fragmentShader).toContain('if (uMode < 0.5 && converted) discard;');
+    expect(fragmentShader).toContain('if (uMode > 0.5 && !converted) discard;');
   });
 });

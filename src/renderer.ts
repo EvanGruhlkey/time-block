@@ -1,11 +1,13 @@
 import {
-  BackSide,
-  BoxGeometry,
   ClampToEdgeWrapping,
   Data3DTexture,
+  DoubleSide,
   GLSL3,
+  Group,
+  InstancedMesh,
   LinearFilter,
-  Mesh,
+  Matrix4,
+  PlaneGeometry,
   RawShaderMaterial,
   RGBAFormat,
   Scene,
@@ -14,8 +16,8 @@ import {
   WebGLRenderer,
 } from 'three';
 import type { CameraController } from './camera';
-import fragmentShader from './shaders/volume.frag?raw';
-import vertexShader from './shaders/volume.vert?raw';
+import fragmentShader from './shaders/slices.frag?raw';
+import vertexShader from './shaders/slices.vert?raw';
 import type { AppState } from './state';
 import type { VolumeAsset } from './volume';
 
@@ -34,15 +36,25 @@ export class WebGLUnavailableError extends Error {
 interface Resources {
   trail: Data3DTexture;
   frames: Data3DTexture;
-  material: RawShaderMaterial;
-  geometry: BoxGeometry;
-  mesh: Mesh<BoxGeometry, RawShaderMaterial>;
+  materials: RawShaderMaterial[];
+  geometry: PlaneGeometry;
+  group: Group;
 }
 
 export interface TimeBlockTransform {
   conversionDepth: number;
   scaleDepth: number;
   positionDepth: number;
+}
+
+export function timeBlockLayers(frameCount: number): {
+  cards: number;
+  trail: number;
+} {
+  return {
+    cards: Math.min(32, frameCount),
+    trail: frameCount,
+  };
 }
 
 export function timeBlockTransform(
@@ -83,7 +95,7 @@ export function createVolumeRenderer(
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
   let resources = createResources(asset);
-  scene.add(resources.mesh);
+  scene.add(resources.group);
   let currentState: AppState | null = null;
   let running = false;
   let resumeAfterRestore = false;
@@ -95,19 +107,20 @@ export function createVolumeRenderer(
   const draw = (): boolean => {
     if (!currentState || disposed) return false;
     const cameraMoving = camera.update();
-    const uniforms = resources.material.uniforms;
     const block = timeBlockTransform(
       currentState.frame,
       currentState.frameCount,
       currentState.timeDepth,
     );
-    uniforms.uConversionDepth!.value = block.conversionDepth;
-    resources.mesh.scale.set(
+    for (const material of resources.materials) {
+      material.uniforms.uConversionDepth!.value = block.conversionDepth;
+    }
+    resources.group.scale.set(
       asset.metadata.width / asset.metadata.height,
       1,
       block.scaleDepth,
     );
-    resources.mesh.position.z = block.positionDepth;
+    resources.group.position.z = block.positionDepth;
     canvas.dataset.camera = camera.camera.position
       .toArray()
       .map((value) => value.toFixed(5))
@@ -145,10 +158,10 @@ export function createVolumeRenderer(
 
   const onContextRestored = (): void => {
     if (disposed) return;
-    scene.remove(resources.mesh);
+    scene.remove(resources.group);
     disposeResources(resources);
     resources = createResources(asset);
-    scene.add(resources.mesh);
+    scene.add(resources.group);
     restoreCount += 1;
     canvas.dataset.restores = String(restoreCount);
     canvas.dataset.renderer = 'ready';
@@ -190,7 +203,7 @@ export function createVolumeRenderer(
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      scene.remove(resources.mesh);
+      scene.remove(resources.group);
       disposeResources(resources);
       renderer.dispose();
       camera.dispose();
@@ -207,30 +220,56 @@ function createResources(asset: VolumeAsset): Resources {
     height,
     depth,
   );
-  const material = new RawShaderMaterial({
-    glslVersion: GLSL3,
-    vertexShader,
-    fragmentShader,
-    side: BackSide,
-    transparent: true,
-    depthWrite: false,
-    uniforms: {
-      uTrail: { value: trail },
-      uFrames: { value: frames },
-      uConversionDepth: { value: 0 },
-      uFrameCount: { value: depth },
-    },
-  });
-  const geometry = new BoxGeometry(1, 1, 1);
-  const mesh = new Mesh(geometry, material);
+  const geometry = new PlaneGeometry(1, 1);
+  const group = new Group();
+  const layers = timeBlockLayers(depth);
+  const cards = createSliceMesh(geometry, frames, depth, layers.cards, 0);
+  const cutouts = createSliceMesh(geometry, trail, depth, layers.trail, 1);
+  cards.renderOrder = 1;
+  cutouts.renderOrder = 2;
+  group.add(cards, cutouts);
 
   return {
     trail,
     frames,
-    material,
+    materials: [cards.material, cutouts.material],
     geometry,
-    mesh,
+    group,
   };
+}
+
+function createSliceMesh(
+  geometry: PlaneGeometry,
+  texture: Data3DTexture,
+  frameCount: number,
+  layerCount: number,
+  mode: 0 | 1,
+): InstancedMesh<PlaneGeometry, RawShaderMaterial> {
+  const material = new RawShaderMaterial({
+    glslVersion: GLSL3,
+    vertexShader,
+    fragmentShader,
+    side: DoubleSide,
+    transparent: true,
+    depthWrite: mode === 0,
+    uniforms: {
+      uVolume: { value: texture },
+      uConversionDepth: { value: 0 },
+      uMode: { value: mode },
+      uFrameCount: { value: frameCount },
+      uLayerCount: { value: layerCount },
+    },
+  });
+  const mesh = new InstancedMesh(geometry, material, layerCount);
+  const matrix = new Matrix4();
+  for (let index = 0; index < layerCount; index += 1) {
+    const progress = layerCount <= 1 ? 0 : index / (layerCount - 1);
+    matrix.makeTranslation(0, 0, 0.5 - progress);
+    mesh.setMatrixAt(index, matrix);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingSphere();
+  return mesh;
 }
 
 function createVolumeTexture(
@@ -255,6 +294,6 @@ function createVolumeTexture(
 function disposeResources(resources: Resources): void {
   resources.trail.dispose();
   resources.frames.dispose();
-  resources.material.dispose();
+  for (const material of resources.materials) material.dispose();
   resources.geometry.dispose();
 }
