@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   ClampToEdgeWrapping,
   Data3DTexture,
   DoubleSide,
@@ -7,6 +8,7 @@ import {
   InstancedMesh,
   LinearFilter,
   Matrix4,
+  NormalBlending,
   PlaneGeometry,
   RawShaderMaterial,
   RGBAFormat,
@@ -50,10 +52,12 @@ export interface TimeBlockTransform {
 export function timeBlockLayers(frameCount: number): {
   cards: number;
   trail: number;
+  glow: number;
 } {
   return {
     cards: Math.min(32, frameCount),
-    trail: frameCount,
+    trail: frameCount * 2,
+    glow: frameCount,
   };
 }
 
@@ -225,14 +229,16 @@ function createResources(asset: VolumeAsset): Resources {
   const layers = timeBlockLayers(depth);
   const cards = createSliceMesh(geometry, frames, depth, layers.cards, 0);
   const cutouts = createSliceMesh(geometry, trail, depth, layers.trail, 1);
+  const glow = createSliceMesh(geometry, trail, depth, layers.glow, 2);
   cards.renderOrder = 1;
-  cutouts.renderOrder = 2;
-  group.add(cards, cutouts);
+  glow.renderOrder = 2;
+  cutouts.renderOrder = 3;
+  group.add(cards, glow, cutouts);
 
   return {
     trail,
     frames,
-    materials: [cards.material, cutouts.material],
+    materials: [cards.material, glow.material, cutouts.material],
     geometry,
     group,
   };
@@ -243,7 +249,7 @@ function createSliceMesh(
   texture: Data3DTexture,
   frameCount: number,
   layerCount: number,
-  mode: 0 | 1,
+  mode: 0 | 1 | 2,
 ): InstancedMesh<PlaneGeometry, RawShaderMaterial> {
   const material = new RawShaderMaterial({
     glslVersion: GLSL3,
@@ -252,6 +258,7 @@ function createSliceMesh(
     side: DoubleSide,
     transparent: true,
     depthWrite: mode === 0,
+    blending: mode === 2 ? AdditiveBlending : NormalBlending,
     uniforms: {
       uVolume: { value: texture },
       uConversionDepth: { value: 0 },

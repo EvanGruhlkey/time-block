@@ -15,7 +15,7 @@ void main() {
   if (uMode > 0.5 && !converted) discard;
 
   vec4 color = texture(uVolume, vec3(vUv, vTime));
-  color.a *= uMode < 0.5 ? 0.96 : 0.82;
+  color.a *= uMode < 0.5 ? 0.96 : uMode < 1.5 ? 0.42 : 0.035;
   if (color.a < 0.025) discard;
   outColor = color;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { timeBlockLayers, timeBlockTransform } from '../src/renderer';
 import fragmentShader from '../src/shaders/slices.frag?raw';
 import vertexShader from '../src/shaders/slices.vert?raw';
+import rendererSource from '../src/renderer.ts?raw';
 
 describe('space-time block geometry', () => {
   it('keeps the complete block depth while conversion starts', () => {
@@ -20,9 +21,9 @@ describe('space-time block geometry', () => {
     });
   });
 
-  it('uses fewer readable cards while retaining every trail pose', () => {
-    expect(timeBlockLayers(120)).toEqual({ cards: 32, trail: 120 });
-    expect(timeBlockLayers(12)).toEqual({ cards: 12, trail: 12 });
+  it('interpolates extra trail layers into a dense motion sculpture', () => {
+    expect(timeBlockLayers(120)).toEqual({ cards: 32, trail: 240, glow: 120 });
+    expect(timeBlockLayers(12)).toEqual({ cards: 12, trail: 24, glow: 12 });
   });
 
   it('positions every temporal layer as a separate plane', () => {
@@ -35,5 +36,10 @@ describe('space-time block geometry', () => {
     expect(fragmentShader).toContain('bool converted = vTime <= uConversionDepth;');
     expect(fragmentShader).toContain('if (uMode < 0.5 && converted) discard;');
     expect(fragmentShader).toContain('if (uMode > 0.5 && !converted) discard;');
+    expect(fragmentShader).toContain('uMode < 1.5 ? 0.42 : 0.035');
+    expect(rendererSource).toContain(
+      'blending: mode === 2 ? AdditiveBlending : NormalBlending',
+    );
+    expect(rendererSource).toContain('layers.glow, 2');
   });
 });
