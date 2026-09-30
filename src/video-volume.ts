@@ -66,6 +66,58 @@ export function compactVisibleFrames(
   });
 }
 
+export function alignSubjectFrames(
+  frames: Uint8ClampedArray[],
+  width: number,
+  height: number,
+): Uint8ClampedArray[] {
+  const centers = frames.map((frame) => subjectCenter(frame, width));
+  const visible = centers.filter(
+    (center): center is { x: number; y: number } => center !== undefined,
+  );
+  if (visible.length === 0) return frames.map((frame) => frame.slice());
+  const targetX = visible.reduce((sum, center) => sum + center.x, 0) / visible.length;
+  const targetY = visible.reduce((sum, center) => sum + center.y, 0) / visible.length;
+  return frames.map((frame, index) => {
+    const center = centers[index];
+    if (!center) return frame.slice();
+    const output = new Uint8ClampedArray(frame.length);
+    const shiftX = Math.round(targetX - center.x);
+    const shiftY = Math.round(targetY - center.y);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const target = { x: x + shiftX, y: y + shiftY };
+        if (target.x < 0 || target.x >= width || target.y < 0 || target.y >= height) {
+          continue;
+        }
+        const sourceOffset = (y * width + x) * 4;
+        const targetOffset = (target.y * width + target.x) * 4;
+        output.set(frame.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+      }
+    }
+    return output;
+  });
+}
+
+function subjectCenter(
+  frame: Uint8ClampedArray,
+  width: number,
+): { x: number; y: number } | undefined {
+  let weightedX = 0;
+  let weightedY = 0;
+  let weight = 0;
+  for (let index = 0; index < frame.length / 4; index += 1) {
+    const alpha = frame[index * 4 + 3]!;
+    if (alpha <= 32) continue;
+    weightedX += (index % width) * alpha;
+    weightedY += Math.floor(index / width) * alpha;
+    weight += alpha;
+  }
+  return weight === 0
+    ? undefined
+    : { x: weightedX / weight, y: weightedY / weight };
+}
+
 export function buildSubjectTrail(
   stabilizedFrames: Uint8ClampedArray[],
   width: number,
@@ -116,7 +168,7 @@ export async function buildModelTrail(
     }
     return foreground / (frame.length / 4) > 0.15 ? moving[index]! : frame;
   });
-  const visible = compactVisibleFrames(refined);
+  const visible = compactVisibleFrames(alignSubjectFrames(refined, width, height));
   const trailFrames = visible.length >= 2 ? visible : refined;
   return fadeTemporalEdges(
     resampleFrames(trailFrames, depth),

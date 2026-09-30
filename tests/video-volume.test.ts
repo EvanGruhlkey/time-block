@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSubjectTrail,
   buildModelTrail,
+  alignSubjectFrames,
   fitVolumeDimensions,
   centerOutIndices,
   compactVisibleFrames,
@@ -13,6 +14,20 @@ import {
 } from '../src/video-volume';
 
 describe('browser video sampling', () => {
+  it('locks isolated subjects to one screen position before extrusion', () => {
+    const left = new Uint8ClampedArray(3 * 4);
+    const right = new Uint8ClampedArray(3 * 4);
+    left.set([220, 160, 80, 255], 0);
+    right.set([220, 160, 80, 255], 8);
+
+    const aligned = alignSubjectFrames([left, right], 3, 1);
+
+    expect(aligned.map((frame) => [...frame])).toEqual([
+      [0, 0, 0, 0, 220, 160, 80, 255, 0, 0, 0, 0],
+      [0, 0, 0, 0, 220, 160, 80, 255, 0, 0, 0, 0],
+    ]);
+  });
+
   it('uses an extended time axis for a readable subject trail', () => {
     expect(VIDEO_TIME_DEPTH).toBe(1.6);
   });
